@@ -20,28 +20,6 @@
 </div>
 {% endif %}
 
-{% if en_cn_images is defined and en_cn_images %}
-<h2 style="font-size:16px; margin-bottom:12px">⚠️ 最近检出：英文图含中文（本地化漏翻译风险）</h2>
-<div class="cn-cards">
-    {% for img in en_cn_images %}
-    <div class="cn-card">
-        <a href="/media/{{ img.image.replace('data/', '', 1) }}" target="_blank">
-            <img class="thumb" src="/media/{{ img.image.replace('data/', '', 1) }}" alt="图片" loading="lazy">
-        </a>
-        <div class="cn-info">
-            <div class="ocr-text">{{ img.ocr_text|highlight_cjk|safe }}</div>
-            <div class="cn-meta">
-                {% if img.catalog %}<span class="cn-tag">{{ img.catalog }}</span>{% endif %}
-                {% if img.doc_url %}
-                <a class="btn-link" href="{{ img.doc_url }}" target="_blank">查看文档 ↗</a>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    {% endfor %}
-</div>
-{% endif %}
-
 {% if catalog_stats is defined and catalog_stats %}
 <h2 style="font-size:16px; margin-bottom:12px">文档与图片统计</h2>
 <table style="margin-bottom:24px">

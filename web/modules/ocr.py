@@ -38,7 +38,7 @@ def _ocr_context(db) -> dict:
             except Exception:
                 pass
 
-    # 最新英文含中文图（按 run 倒序 + 去重，取 8 张）
+    # 最新英文含中文图（按 run 倒序 + 去重，取 8 张）——暂不在首页展示，保留计算供后续启用
     en_cn_images: list[dict] = []
     seen: set[str] = set()
     for row in db._conn.execute(
