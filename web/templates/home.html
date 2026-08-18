@@ -12,4 +12,31 @@
     </a>
     {% endfor %}
 </div>
+
+<div class="sched">
+    <h2>⏰ 每日定时任务</h2>
+    <table>
+        <thead>
+            <tr><th>时间</th><th>任务</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="mono">06:00</td>
+                <td>📚 文档增量同步</td>
+                <td>从华为官网同步新增/修改/删除的文档（约 20 分钟）</td>
+            </tr>
+            <tr>
+                <td class="mono">06:30</td>
+                <td>🔍 图片 OCR 检查（增量）</td>
+                <td>只检查当天变更文档中的图片，检测图片中的中文字符</td>
+            </tr>
+            <tr>
+                <td class="mono">06:35</td>
+                <td>🌐 英文文档检查（增量）</td>
+                <td>只检查当天变更的英文文档中的中文字符、中文标点与中文链接</td>
+            </tr>
+        </tbody>
+    </table>
+    <p class="subtitle" style="margin-top:12px;">三个任务依次执行，检查结果实时可见。当前首页模块卡片可进入各模块查看历史与明细。</p>
+</div>
 {% endblock %}
