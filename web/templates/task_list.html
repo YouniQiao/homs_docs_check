@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ module.icon }} {{ module.name }}</h1>
+<p class="subtitle">{{ module.description }}</p>
+
+{% if ocr_stats is defined and ocr_stats %}
+<div class="stats">
+    <div class="stat-card">
+        <div class="num">{{ ocr_stats.checked }}</div>
+        <div class="label">已检查图片</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--modified)">{{ ocr_stats.has_cn }}</div>
+        <div class="label">检出中文</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--deleted)">{{ ocr_stats.en_has_cn }}</div>
+        <div class="label">⚠️ 英文图检出中文</div>
+    </div>
+</div>
+{% endif %}
+
+{% if en_cn_images is defined and en_cn_images %}
+<h2 style="font-size:16px; margin-bottom:12px">⚠️ 最近检出：英文图含中文（本地化漏翻译风险）</h2>
+<div class="cn-cards">
+    {% for img in en_cn_images %}
+    <div class="cn-card">
+        <a href="/media/{{ img.image.replace('data/', '', 1) }}" target="_blank">
+            <img class="thumb" src="/media/{{ img.image.replace('data/', '', 1) }}" alt="图片" loading="lazy">
+        </a>
+        <div class="cn-info">
+            <div class="ocr-text">{{ img.ocr_text|highlight_cjk|safe }}</div>
+            <div class="cn-meta">
+                {% if img.catalog %}<span class="cn-tag">{{ img.catalog }}</span>{% endif %}
+                {% if img.doc_url %}
+                <a class="btn-link" href="{{ img.doc_url }}" target="_blank">查看文档 ↗</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if catalog_stats is defined and catalog_stats %}
+<h2 style="font-size:16px; margin-bottom:12px">文档与图片统计</h2>
+<table style="margin-bottom:24px">
+    <thead>
+        <tr>
+            <th>语言</th>
+            <th>分类</th>
+            <th style="text-align:right">文档数</th>
+            <th style="text-align:right">图片数</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for c in catalog_stats %}
+        <tr>
+            <td style="font-weight:600">{{ c.lang }}</td>
+            <td>{{ c.catalog }}</td>
+            <td style="text-align:right">{{ c.docs }}</td>
+            <td style="text-align:right">{{ c.imgs }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<h2 style="font-size:16px; margin-bottom:12px">同步任务记录</h2>
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>开始时间</th>
+            <th>结束时间</th>
+            <th>状态</th>
+            {% for f, label in module.summary_fields %}
+            <th style="text-align:right">{{ label }}</th>
+            {% endfor %}
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for r in runs %}
+        <tr>
+            <td>{{ r.id }}</td>
+            <td class="mono">{{ r.started_at|fmt_time }}</td>
+            <td class="mono">{{ r.finished_at|fmt_time or '—' }}</td>
+            <td>
+                {% set b = badge_map.get(r.status, ('badge-failed', r.status)) %}
+                <span class="badge {{ b[0] }}">{{ b[1] }}</span>
+            </td>
+            {% for f, label in module.summary_fields %}
+            <td style="text-align:right">{{ r.summary.get(f, 0) }}</td>
+            {% endfor %}
+            <td><a href="/{{ module.key }}/run/{{ r.id }}">详情 →</a></td>
+        </tr>
+    {% endfor %}
+    {% if not runs %}
+        <tr><td colspan="{{ 5 + module.summary_fields|length }}" class="empty">暂无任务记录</td></tr>
+    {% endif %}
+    </tbody>
+</table>
+{% endblock %}

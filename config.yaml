@@ -1,0 +1,29 @@
+# HarmonyOS 文档同步配置
+catalogs:
+  - harmonyos-guides
+  - harmonyos-references
+  - harmonyos-faqs
+  - harmonyos-releases
+  - best-practices
+
+# 语言：双语都存
+languages:
+  - cn
+  - en
+
+# 路径
+data_dir: data
+images_dir: images
+db_path: index.db
+
+# 华为文档官网链接前缀
+site_base: "https://developer.huawei.com/consumer"
+
+# 请求
+request_timeout: 30
+retries: 3
+retry_backoff: 2
+# 每篇文档之间的小延时（秒），防止触发限流（并发模式下不再 sleep，保留给串行兜底）
+request_delay: 0.1
+# 并发下载线程数（文档级并发，受华为 API 限流约束，建议 4~16）
+workers: 8

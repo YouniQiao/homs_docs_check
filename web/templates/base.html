@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if module %}{{ module.icon }} {{ module.name }} · {% endif %}OpenHarmony 文档平台</title>
+    <style>
+        :root {
+            --bg: #f5f7fa; --card: #fff; --text: #333; --muted: #666;
+            --border: #e0e0e0; --primary: #2B579A;
+            --added: #28a745; --modified: #f57c00; --deleted: #d32f2f;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+               background: var(--bg); color: var(--text); line-height: 1.6; }
+        .topnav { background: var(--primary); padding: 0 24px; display: flex;
+                  align-items: center; flex-wrap: wrap; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+        .topnav a { color: #fff; text-decoration: none; padding: 14px 16px;
+                    font-size: 14px; display: inline-block; opacity: .85; }
+        .topnav a:hover { opacity: 1; }
+        .topnav a.active { opacity: 1; font-weight: 600;
+                           border-bottom: 3px solid #fff; }
+        .topnav .brand { font-weight: 700; font-size: 15px; opacity: 1; }
+        .topnav .right { margin-left: auto; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+        h1 { font-size: 22px; margin-bottom: 8px; }
+        .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+        .stats { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+        .stat-card { background: var(--card); border-radius: 8px; padding: 16px 24px;
+                     box-shadow: 0 1px 3px rgba(0,0,0,.08); text-align: center; }
+        .stat-card .num { font-size: 28px; font-weight: 700; }
+        .stat-card .label { font-size: 13px; color: var(--muted); }
+        .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+                 gap: 16px; }
+        .card { background: var(--card); border-radius: 8px; padding: 24px;
+                box-shadow: 0 1px 3px rgba(0,0,0,.08); text-decoration: none;
+                color: var(--text); display: block; transition: box-shadow .15s; }
+        .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+        .card .icon { font-size: 32px; margin-bottom: 12px; }
+        .card .name { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+        .card .desc { font-size: 13px; color: var(--muted); }
+        table { width: 100%; border-collapse: collapse; background: var(--card);
+                border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+        th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border);
+                 font-size: 13px; }
+        th { background: #f9fafb; font-weight: 600; }
+        tr:hover { background: #f8f9fb; }
+        a { color: var(--primary); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 3px;
+                 font-size: 12px; font-weight: 600; white-space: nowrap; }
+        .badge-added { background: #e6f7eb; color: var(--added); }
+        .badge-modified { background: #fff3e0; color: var(--modified); }
+        .badge-deleted { background: #fde7e7; color: var(--deleted); }
+        .badge-info { background: #e8f0fe; color: var(--primary); }
+        .badge-success { background: #e6f7eb; color: var(--added); }
+        .badge-running { background: #e8f0fe; color: var(--primary); }
+        .badge-failed { background: #fde7e7; color: var(--deleted); }
+        .mono { font-family: "SF Mono", monospace; font-size: 12px; }
+        .empty { text-align: center; color: var(--muted); padding: 30px; }
+        .back { display: inline-block; margin-bottom: 16px; font-size: 13px; }
+        .detail-summary { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+        .thumb { max-width: 180px; max-height: 120px; object-fit: contain;
+                 border: 1px solid var(--border); border-radius: 4px;
+                 background: #fafbfc; }
+        .thumb:hover { box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+        .btn-link { display: inline-block; padding: 4px 12px;
+                    background: var(--primary); color: #fff !important;
+                    border-radius: 4px; font-size: 12px; text-decoration: none;
+                    white-space: nowrap; }
+        .btn-link:hover { opacity: .85; text-decoration: none; }
+        .filters { display: flex; gap: 10px; align-items: center; margin-bottom: 16px;
+                   background: var(--card); padding: 10px 14px; border-radius: 8px;
+                   box-shadow: 0 1px 3px rgba(0,0,0,.08); flex-wrap: wrap; }
+        .filters label { font-size: 13px; color: var(--muted); }
+        .filters select { padding: 4px 8px; border: 1px solid var(--border);
+                          border-radius: 4px; font-size: 13px; background: #fff; }
+        .filter-count { margin-left: auto; font-size: 13px; color: var(--muted); }
+        .cn-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+                    gap: 12px; margin-bottom: 24px; }
+        .cn-card { display: flex; gap: 12px; background: var(--card); padding: 12px;
+                   border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+        .cn-card .thumb { max-width: 140px; max-height: 100px; }
+        .cn-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+        .cn-meta { display: flex; gap: 8px; align-items: center; margin-top: auto; }
+        .cn-tag { font-size: 11px; color: var(--muted); background: #f0f2f5;
+                  padding: 2px 8px; border-radius: 3px; }
+        .link-item { margin-bottom: 2px; }
+        .issue-link { color: var(--deleted); font-size: 12px; text-decoration: none;
+                      border-bottom: 1px dashed var(--deleted); word-break: break-all; }
+        .issue-link:hover { text-decoration: underline; }
+        .link-more { font-size: 12px; color: var(--muted); }
+        .filter-input { padding: 5px 8px; border: 1px solid var(--border);
+                        border-radius: 4px; font-size: 13px; width: 220px; }
+        .filter-input:focus { outline: none; border-color: var(--primary); }
+        .filter-apply { padding: 4px 12px; border: 1px solid var(--border);
+                        background: #fff; border-radius: 4px; font-size: 13px;
+                        cursor: pointer; }
+        .filter-apply:hover { background: var(--primary); color: #fff;
+                              border-color: var(--primary); }
+        .btn-export { display: inline-block; padding: 4px 12px;
+                      background: var(--added); color: #fff; border-radius: 4px;
+                      font-size: 13px; text-decoration: none; margin-left: 4px; }
+        .btn-export:hover { text-decoration: none; opacity: .85; }
+        .pagination { display: flex; align-items: center; gap: 12px;
+                      justify-content: center; margin: 18px 0 6px; }
+        .pg-btn { padding: 5px 14px; border: 1px solid var(--border);
+                  border-radius: 4px; font-size: 13px; text-decoration: none;
+                  background: #fff; color: var(--text); }
+        .pg-btn:hover { background: var(--primary); color: #fff;
+                        border-color: var(--primary); text-decoration: none; }
+        .pg-info { font-size: 13px; color: var(--muted); }
+        .ocr-text { font-family: "SF Mono", "Consolas", monospace; font-size: 12px;
+                    white-space: pre-wrap; word-break: break-all;
+                    display: inline-block; max-width: 560px; }
+        mark { background: #fff176; color: #333; padding: 0 1px; border-radius: 2px; }
+    </style>
+</head>
+<body>
+    <nav class="topnav">
+        <a class="brand" href="/">🏠 OpenHarmony 文档平台</a>
+        {% for m in nav_modules %}
+        <a href="/{{ m.key }}/" class="{{ 'active' if module and module.key == m.key else '' }}">
+            {{ m.icon }} {{ m.name }}
+        </a>
+        {% endfor %}
+        <a class="right {{ 'active' if request.path.startswith('/feedback') else '' }}" href="/feedback">💬 问题反馈</a>
+    </nav>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

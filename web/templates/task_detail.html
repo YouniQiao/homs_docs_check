@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block content %}
+<a class="back" href="/{{ module.key }}/">← 返回 {{ module.name }}</a>
+<h1>{{ module.icon }} {{ module.name }} · 运行 #{{ run.id if run else '?' }}</h1>
+
+{% if run %}
+<p class="subtitle mono">{{ run.started_at|fmt_time }} → {{ run.finished_at|fmt_time or '进行中' }}</p>
+{% set sum_fields = module.detail_summary_fields or module.summary_fields %}
+<div class="detail-summary">
+    {% for f, label in sum_fields %}
+    <div class="stat-card">
+        <div class="num">{{ run.summary.get(f, 0) }}</div>
+        <div class="label">{{ label }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="subtitle">运行记录不存在</p>
+{% endif %}
+
+{% if module.filters and items is defined %}
+<form method="get" class="filters">
+    {% for f in module.filters %}
+    <label>{{ f.label }}</label>
+    {% if f.control == 'text' %}
+    <input type="text" name="{{ f.key }}" value="{{ filter_state.get(f.key, '') }}"
+           placeholder="{{ f.placeholder or '输入关键字' }}" class="filter-input">
+    {% else %}
+    <select name="{{ f.key }}" onchange="this.form.submit()">
+        {% for v, label in f.options %}
+        <option value="{{ v }}" {{ 'selected' if filter_state.get(f.key) == v else '' }}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    {% endif %}
+    {% endfor %}
+    <button type="submit" class="filter-apply">过滤</button>
+    {% if run %}
+    <a class="btn-export" href="/{{ module.key }}/run/{{ run.id }}/export?{{ request.query_string.decode() }}">⬇ 导出当前所选</a>
+    {% endif %}
+    <span class="filter-count">{{ total }} 条结果</span>
+    <noscript><button type="submit">应用</button></noscript>
+</form>
+{% endif %}
+
+<table>
+    <thead>
+        <tr>
+            <th>类型</th>
+            {% for f, label, render in item_columns %}
+            <th>{{ label }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for it in items %}
+        <tr>
+            <td>
+                {% if module.multi_badge is defined and module.multi_badge %}
+                    {% set ns = namespace(active=false) %}
+                    {% for fd, cls, label in module.multi_badge %}
+                        {% if it.detail.get(fd, 0) > 0 %}
+                            <span class="badge {{ cls }}">{{ label }}</span>
+                            {% set ns.active = true %}
+                        {% endif %}
+                    {% endfor %}
+                    {% if not ns.active %}
+                        <span class="badge badge-added">正常</span>
+                    {% endif %}
+                {% else %}
+                    {% set b = badge_map.get(it.item_type, ('badge-added', it.item_type)) %}
+                    <span class="badge {{ b[0] }}">{{ b[1] }}</span>
+                {% endif %}
+            </td>
+            {% for f, label, render in item_columns %}
+            <td>
+                {% if render == 'link_list' %}
+                    {% set links = it.detail.get(f, []) %}
+                    {% if links %}
+                        {% for l in links %}
+                        <div class="link-item">
+                            <a class="issue-link" href="{{ l.url }}" target="_blank">{{ l.text or l.url[:40] }} ↗</a>
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                {% elif (f == 'url' or f == 'doc_url') and (it.detail.get('url') or it.detail.get('doc_url')) %}
+                    <a class="btn-link" href="{{ it.detail.get('url') or it.detail.get('doc_url') }}" target="_blank">查看文档 ↗</a>
+                {% elif f == 'image' and it.detail.get(f) %}
+                    <a href="/media/{{ it.detail[f].replace('data/', '', 1) }}" target="_blank">
+                        <img class="thumb" src="/media/{{ it.detail[f].replace('data/', '', 1) }}"
+                             alt="图片" loading="lazy">
+                    </a>
+                {% elif f == 'ocr_text' %}
+                    <span class="ocr-text">{{ it.detail.get(f, '')|highlight_cjk|safe }}</span>
+                {% else %}
+                    {{ it.detail.get(f, '')|fmt_value }}
+                {% endif %}
+            </td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+    {% if not items %}
+        <tr><td colspan="{{ 1 + module.item_columns|length }}" class="empty">暂无明细</td></tr>
+    {% endif %}
+    </tbody>
+</table>
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% set sep = '&amp;' if base_qs else '' %}
+    {% if page > 1 %}<a class="pg-btn" href="/{{ module.key }}/run/{{ run.id }}?{{ base_qs }}{{ sep }}page={{ page-1 }}">← 上一页</a>{% endif %}
+    <span class="pg-info">第 {{ page }} / {{ total_pages }} 页 · 共 {{ total }} 条</span>
+    {% if page < total_pages %}<a class="pg-btn" href="/{{ module.key }}/run/{{ run.id }}?{{ base_qs }}{{ sep }}page={{ page+1 }}">下一页 →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,37 @@
+# ===== 数据与数据库（可从官网重新同步生成，体积巨大，不入库）=====
+data/
+index.db
+index.db-shm
+index.db-wal
+*.db
+*.db-shm
+*.db-wal
+
+# ===== 运行日志 =====
+logs/
+*.log
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+*.egg
+
+# ===== 编辑器 / 系统 =====
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+Thumbs.db
+nohup.out
+
+# ===== 敏感信息（当前 config.yaml 无密钥；若日后加入 token 请取消注释）=====
+# config.yaml
+# .env
+# *.token

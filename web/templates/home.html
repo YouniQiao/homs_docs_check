@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>OpenHarmony 文档平台</h1>
+<p class="subtitle">统一入口：文档同步、图片 OCR 检查等定时任务的结果展示</p>
+
+<div class="cards">
+    {% for m in nav_modules %}
+    <a class="card" href="/{{ m.key }}/">
+        <div class="icon">{{ m.icon }}</div>
+        <div class="name">{{ m.name }}</div>
+        <div class="desc">{{ m.description }}</div>
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}
