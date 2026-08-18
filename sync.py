@@ -1,4 +1,4 @@
-"""OpenHarmony 文档同步主脚本。
+"""HarmonyOS 文档同步主脚本。
 
 用法：
   python3 sync.py              # 增量同步
@@ -290,7 +290,7 @@ def sync(config: dict, db: IndexDB, catalogs: list[str], langs: list[str],
 
 
 def main():
-    parser = argparse.ArgumentParser(description="OpenHarmony 文档同步")
+    parser = argparse.ArgumentParser(description="HarmonyOS 文档同步")
     parser.add_argument("--full", action="store_true", help="首次全量（建立基线）")
     parser.add_argument("--dry-run", action="store_true", help="只对比不下载")
     parser.add_argument("--catalog", action="append", help="限定 catalog（可多次）")

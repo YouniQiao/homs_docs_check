@@ -1,4 +1,4 @@
-"""OpenHarmony 文档平台 Web 入口。
+"""HarmonyOS 文档平台 Web 入口。
 
 应用工厂 + 注册所有任务模块。统一端口 3008，各模块挂 /<key>/ 路由前缀。
 新增模块只需在 web/modules/ 加一个定义文件并注册到 MODULES 列表。

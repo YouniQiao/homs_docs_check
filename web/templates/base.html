@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% if module %}{{ module.icon }} {{ module.name }} · {% endif %}OpenHarmony 文档平台</title>
+    <title>{% if module %}{{ module.icon }} {{ module.name }} · {% endif %}HarmonyOS 文档平台</title>
     <style>
         :root {
             --bg: #f5f7fa; --card: #fff; --text: #333; --muted: #666;
@@ -118,7 +118,7 @@
 </head>
 <body>
     <nav class="topnav">
-        <a class="brand" href="/">🏠 OpenHarmony 文档平台</a>
+        <a class="brand" href="/">🏠 HarmonyOS 文档平台</a>
         {% for m in nav_modules %}
         <a href="/{{ m.key }}/" class="{{ 'active' if module and module.key == m.key else '' }}">
             {{ m.icon }} {{ m.name }}
