@@ -43,6 +43,12 @@ def create_app() -> Flask:
     def home():
         return render_template("home.html")
 
+    @app.after_request
+    def no_cache(resp):
+        # 动态页面禁用缓存：避免翻页/筛选时浏览器复用旧页面导致内容不变
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
     return app
 
 

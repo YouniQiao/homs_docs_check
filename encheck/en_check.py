@@ -176,9 +176,20 @@ def main():
     print(f"   收集 {len(docs)} 篇，已检查 {len(docs) - len(todo)}，本次待跑 {len(todo)}",
           flush=True)
 
-    if args.dry_run or not todo:
+    if args.dry_run:
         db.close()
-        print("   [dry-run 或无可检查文档] 结束", flush=True)
+        print("   [dry-run] 结束", flush=True)
+        return
+
+    if not todo:
+        # 无可检查文档：仍记录一条空 run，便于确认定时任务已执行
+        run_id = _write_with_retry(db, db.start_run, "encheck")
+        _write_with_retry(db, db.finish_run, run_id, {
+            "total": 0, "hanzi": 0, "punct": 0, "url_cn": 0,
+            "cn_link": 0, "clean": 0, "errors": 0,
+            "elapsed_sec": 0, "note": "无新增英文文档变更"})
+        db.close()
+        print("   无可检查文档，已记录空 run 确认执行", flush=True)
         return
 
     # 3. 多进程检查（结果先攒内存，检查完再集中写库，减少写锁竞争）

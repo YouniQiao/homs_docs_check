@@ -35,7 +35,7 @@
     {% endfor %}
     <button type="submit" class="filter-apply">过滤</button>
     {% if run %}
-    <a class="btn-export" href="/{{ module.key }}/run/{{ run.id }}/export?{{ request.query_string.decode() }}">⬇ 导出当前所选</a>
+    <a class="btn-export" href="/{{ module.key }}/run/{{ run.id }}/export?{{ request.query_string.decode()|safe }}">⬇ 导出当前所选</a>
     {% endif %}
     <span class="filter-count">{{ total }} 条结果</span>
     <noscript><button type="submit">应用</button></noscript>
@@ -105,10 +105,9 @@
 </table>
 {% if total_pages > 1 %}
 <div class="pagination">
-    {% set sep = '&amp;' if base_qs else '' %}
-    {% if page > 1 %}<a class="pg-btn" href="/{{ module.key }}/run/{{ run.id }}?{{ base_qs }}{{ sep }}page={{ page-1 }}">← 上一页</a>{% endif %}
+    {% if page > 1 %}<a class="pg-btn" href="/{{ module.key }}/run/{{ run.id }}?{{ (base_qs ~ ('&' if base_qs else '') ~ 'page=' ~ (page-1))|safe }}">← 上一页</a>{% endif %}
     <span class="pg-info">第 {{ page }} / {{ total_pages }} 页 · 共 {{ total }} 条</span>
-    {% if page < total_pages %}<a class="pg-btn" href="/{{ module.key }}/run/{{ run.id }}?{{ base_qs }}{{ sep }}page={{ page+1 }}">下一页 →</a>{% endif %}
+    {% if page < total_pages %}<a class="pg-btn" href="/{{ module.key }}/run/{{ run.id }}?{{ (base_qs ~ ('&' if base_qs else '') ~ 'page=' ~ (page+1))|safe }}">下一页 →</a>{% endif %}
 </div>
 {% endif %}
 {% endblock %}

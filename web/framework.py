@@ -74,9 +74,12 @@ def _apply_filters(items: list[dict], module: dict, args) -> tuple[list[dict], d
     state: dict = {}
     for f in module.get("filters", []):
         key = f["key"]
-        val = args.get(key, "all")
+        # text 控件默认空串；select 控件默认 "all"
+        default_val = "" if f.get("control") == "text" else "all"
+        val = args.get(key, default_val)
         state[key] = val
-        if val == "all" or f.get("source") == "sort":
+        skip = (val == default_val) or f.get("source") == "sort"
+        if skip:
             continue
         if f["source"] == "item_type":
             items = [it for it in items if it["item_type"] == val]

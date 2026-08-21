@@ -131,9 +131,19 @@ def main():
     print(f"   收集 {len(tasks)} 张（含重复引用），唯一图片 {len(seen)}，"
           f"本次待跑 {len(todo)}", flush=True)
 
-    if args.dry_run or not todo:
+    if args.dry_run:
         db.close()
-        print("   [dry-run 或无可跑图片] 结束", flush=True)
+        print("   [dry-run] 结束", flush=True)
+        return
+
+    if not todo:
+        # 无可跑图片：仍记录一条空 run，便于确认定时任务已执行
+        run_id = db.start_run("ocr")
+        summary = {"total": 0, "has_cn": 0, "no_cn": 0, "en_has_cn": 0,
+                   "errors": 0, "elapsed_sec": 0, "rate_per_sec": 0}
+        db.finish_run(run_id, summary)
+        db.close()
+        print("   无可跑图片，已记录空 run 确认执行", flush=True)
         return
 
     if args.limit:
