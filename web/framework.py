@@ -112,6 +112,10 @@ def _apply_filters(items: list[dict], module: dict, args) -> tuple[list[dict], d
         items.sort(key=lambda it: it["detail"].get("confidence", 0), reverse=True)
     elif sort == "conf_asc":
         items.sort(key=lambda it: it["detail"].get("confidence", 0))
+    elif sort == "int_desc":
+        items.sort(key=lambda it: it["detail"].get("int_missing_count", 0), reverse=True)
+    elif sort == "ext_desc":
+        items.sort(key=lambda it: it["detail"].get("ext_dead_count", 0), reverse=True)
     return items, state
 
 
