@@ -27,7 +27,10 @@ sys.path.insert(0, str(BASE_DIR))
 
 from db import IndexDB  # noqa: E402
 
-IMG_RE = re.compile(r"!\[[^\]]*\]\(images/([^)]+)\)")
+# 匹配 markdown 图片引用 ![](images/xxx.png)
+# 兼容带 title 的形式：![] (images/xxx.png "点击放大") —— 文件名在空格/" 处停止，
+# 不要用 [^)]+（会把 title 吞进文件名导致文件查找失败而漏检）
+IMG_RE = re.compile(r"!\[[^\]]*\]\(images/([^)\s\"]+)")
 DATA_DIR = BASE_DIR / "data"
 
 
@@ -58,11 +61,31 @@ def collect_images(doc_keys: set[str] | None = None) -> list[tuple]:
                     continue
                 for m in IMG_RE.finditer(content):
                     fname = m.group(1)
-                    if not (images_dir / fname).exists():
+                    img_path = images_dir / fname
+                    if not img_path.exists():
+                        continue
+                    # 过滤装饰性小图标：华为文档的"说明/注意/提示"提示条
+                    # 是统一 102x38px 的小横幅，识别内容无意义。跳过高度过小的图。
+                    if not _is_meaningful_image(img_path):
                         continue
                     img_rel = f"data/{lang}/{catalog}/images/{fname}"
                     tasks.append((img_rel, doc_key, lang, catalog))
     return tasks
+
+
+# 过滤掉装饰性小图标所需的最小图片高度（px）。
+# 华为"说明/注意/提示"等提示条统一 102x38px，正常内容截图高度远大于此。
+MIN_IMG_HEIGHT = 50
+
+
+def _is_meaningful_image(img_path: "Path") -> bool:
+    """按尺寸过滤装饰性小图标（如提示条），避免无意义的 OCR。读不了尺寸则照常保留。"""
+    try:
+        from PIL import Image
+        with Image.open(img_path) as im:
+            return im.height >= MIN_IMG_HEIGHT
+    except Exception:
+        return True
 
 
 def _worker(batch: list[tuple]) -> list[tuple]:
