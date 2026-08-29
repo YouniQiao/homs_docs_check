@@ -30,6 +30,7 @@ import concurrent.futures
 import re
 import sys
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -53,6 +54,61 @@ def _normalize(url: str) -> str:
 
 def _is_internal(url: str) -> bool:
     return any(h in url for h in HUAWEI_HOSTS)
+
+
+def _is_vintage(url: str) -> bool:
+    """站内链接是否指向历史版本文档（catalog 含 -V5 等后缀，如 harmonyos-guides-V5）。
+
+    正常文档不应链接到历史版本，这类链接是质量问题（非死链，页面仍可访问）。
+    """
+    m = re.search(r"/doc/([^/]+)/", url)
+    return bool(m and re.search(r"-V\d+$", m.group(1)))
+
+
+def _anchor_slug(s: str) -> str:
+    """把标题/锚点文本归一化为可比的 slug：小写、去转义、去 [hN]、分隔符统一为 '-'、
+    去标点，保留中文字符。如 'ArkUI\\_ErrorCode' / 'arkui_errorcode' -> 'arkui-errorcode'。
+    """
+    s = s.replace("\\", "")
+    s = re.sub(r"^\[h\d+\]", "", s)
+    s = s.lower()
+    s = re.sub(r"[^\w\u4e00-\u9fff-]+", "-", s)
+    s = re.sub(r"[-_]+", "-", s)
+    return s.strip("-")
+
+
+def _doc_anchors(content: str) -> set[str]:
+    """提取文档所有标题的 slug 锚点集合（支持标准 '# ' 和 '\[hN\]' 两类标题）。"""
+    heads = re.findall(r"^(?:#{1,6}|\[h\d+\])[ \t]*(.+)$", content, re.M)
+    return {_anchor_slug(h) for h in heads if _anchor_slug(h)}
+
+
+def _link_anchor(url: str) -> str | None:
+    """提取链接的锚点 slug；无锚点返回 None。含 URL 解码（中文锚点可能是 URL 编码）。"""
+    if "#" not in url:
+        return None
+    a = url.split("#", 1)[1]
+    a = a.split("?", 1)[0].strip()
+    if not a:
+        return None
+    # 中文锚点可能是 URL 编码（如 %E5%BC%80 或双重编码 %25E5），解码后再 slug
+    a = urllib.parse.unquote(a)
+    a = urllib.parse.unquote(a)
+    return _anchor_slug(a)
+
+
+def _anchor_valid(slug: str, anchors: set[str]) -> bool:
+    if slug in anchors:
+        return True
+    # 前缀匹配：标题锚点可能带序号/后缀（如 xxx-1）
+    if any(a.startswith(slug) for a in anchors):
+        return True
+    # API 重载/版本后缀回退：如 framenode-1(重载)、getSync12(API版本) 的基础是 framenode/getSync
+    base = re.sub(r"-\d+$", "", slug)
+    base = re.sub(r"\d+$", "", base)
+    if base and (base in anchors or any(a.startswith(base) for a in anchors)):
+        return True
+    return False
 
 
 def _http_status(url: str, timeout: int = 12) -> str:
@@ -140,20 +196,34 @@ def main() -> None:
         docs = docs[:args.limit]
     print(f"   待检查 {len(docs)} 篇", flush=True)
 
+    # 预载全量文档标题锚点 + url->doc_key 映射（锚点失效检查用）
+    doc_url_key: dict[str, str] = {
+        (u or "").rstrip("/"): k
+        for (k, u) in db._conn.execute("SELECT doc_key, url FROM docs") if u
+    }
+    doc_anchors: dict[str, set[str]] = {
+        key: _doc_anchors(content) for key, _lg, _ct, content in docs
+    }
+
     # 2. 收集唯一 URL，分类外部/站内，确定需 HTTP 的
     t0 = time.time()
     need_int: set[str] = set()
     need_ext: set[str] = set()
     all_int: set[str] = set()
     all_ext: set[str] = set()
+    vintage_urls: set[str] = set()
     for _dk, _lg, _ct, content in docs:
         for _text, raw, is_int in _http_links(content):
             u = _normalize(raw)
+            if is_int and _is_vintage(u):
+                vintage_urls.add(u)   # 历史版本链接：本地判定，不 HTTP
+                continue
             (all_int if is_int else all_ext).add(u)
             if args.refresh or db.get_url_cache(u) is None:
                 (need_int if is_int else need_ext).add(u)
     print(f"   站内链接 URL {len(all_int)} 个（需查 {len(need_int)}） | "
-          f"外部 URL {len(all_ext)} 个（需查 {len(need_ext)}）", flush=True)
+          f"外部 URL {len(all_ext)} 个（需查 {len(need_ext)}） | "
+          f"历史版本链接 URL {len(vintage_urls)} 个", flush=True)
 
     # 3. HTTP 检查（外部并发 / 站内低速串行），写缓存
     status: dict[str, str] = {}
@@ -205,16 +275,33 @@ def main() -> None:
     summary = {"total": 0, "int_dead": 0, "ext_dead": 0, "unreachable": 0}
     problems: list[dict] = []
     for doc_key, lang, catalog, content in docs:
-        dead, unk = [], 0
+        dead, unk, vintage, anchor_miss = [], 0, [], []
         for text, raw, is_int in _http_links(content):
             u = _normalize(raw)
+            if is_int and u in vintage_urls:
+                vintage.append({"text": text, "url": raw})
+                continue
+            # 锚点失效检查（自锚点 + 站内跨文档锚点）
+            a_slug = _link_anchor(raw)
+            if a_slug and (raw.startswith("#") or is_int):
+                orig_a = raw.split("#", 1)[1].split("?", 1)[0].strip()
+                if re.fullmatch(r"section\d+", orig_a):
+                    continue  # 华为自动内容块 id，本地转换丢失无法验证，视为有效
+                if raw.startswith("#"):
+                    target_anchors = doc_anchors.get(doc_key)
+                else:
+                    target_anchors = doc_anchors.get(doc_url_key.get(u))
+                if target_anchors is not None and \
+                        not _anchor_valid(a_slug, target_anchors):
+                    anchor_miss.append({"text": text, "url": raw})
+                    continue
             s = get_status(u)
             if s.isdigit() and int(s) >= 400:
                 dead.append({"text": text, "url": raw, "status": s,
                              "kind": "int" if is_int else "ext"})
             elif s.startswith("ERR") or s == "ERR:nocache":
                 unk += 1
-        if not dead and not unk:
+        if not dead and not unk and not vintage and not anchor_miss:
             continue
         doc_url = ""
         d = db.get_doc(doc_key)
@@ -225,16 +312,22 @@ def main() -> None:
         problems.append({"doc_key": doc_key, "lang": lang, "catalog": catalog,
                          "url": doc_url, "dead_links": dead, "dead_count": len(dead),
                          "dead_int_count": dead_int, "dead_ext_count": dead_ext,
-                         "unreachable_count": unk})
+                         "unreachable_count": unk,
+                         "vintage_links": vintage, "vintage_count": len(vintage),
+                         "anchor_miss_links": anchor_miss,
+                         "anchor_miss_count": len(anchor_miss)})
 
     # 5. 汇总 + 写库
     summary["total"] = len(problems)
     summary["int_dead"] = sum(p["dead_int_count"] for p in problems)
     summary["ext_dead"] = sum(p["dead_ext_count"] for p in problems)
     summary["unreachable"] = sum(p["unreachable_count"] for p in problems)
+    summary["vintage"] = sum(p["vintage_count"] for p in problems)
+    summary["anchor_miss"] = sum(p["anchor_miss_count"] for p in problems)
     print(f"   统计: {summary['total']} 篇问题 | 站内死链 "
           f"{summary['int_dead']} | 外部死链 {summary['ext_dead']} | "
-          f"不可达 {summary['unreachable']}", flush=True)
+          f"不可达 {summary['unreachable']} | 历史版本链接 "
+          f"{summary['vintage']} | 锚点失效 {summary['anchor_miss']}", flush=True)
 
     if args.dry_run:
         db.close()
