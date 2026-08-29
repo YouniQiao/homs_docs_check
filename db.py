@@ -61,6 +61,12 @@ CREATE TABLE IF NOT EXISTS feedbacks (
     status      TEXT DEFAULT 'new',    -- new / doing / done / ignore
     created_at  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS url_cache (
+    url         TEXT PRIMARY KEY,
+    status      TEXT,                  -- HTTP 状态码或 ERR:xxx
+    updated_at  TEXT
+);
 """
 
 
@@ -236,6 +242,20 @@ class IndexDB:
         self._conn.commit()
         return self._conn.execute(
             "SELECT last_insert_rowid()").fetchone()[0]
+
+    # ---- 链接健康检查 ----
+    def get_url_cache(self, url: str) -> str | None:
+        r = self._conn.execute(
+            "SELECT status FROM url_cache WHERE url=?", (url,)).fetchone()
+        return r[0] if r else None
+
+    def set_url_cache(self, url: str, status: str):
+        # 不即时 commit：批量写入后由调用方统一 commit，减少锁竞争
+        self._conn.execute(
+            "INSERT INTO url_cache (url, status, updated_at) VALUES (?,?,?)"
+            " ON CONFLICT(url) DO UPDATE SET status=excluded.status,"
+            " updated_at=excluded.updated_at",
+            (url, status, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
     def list_feedbacks(self, status: str | None = None) -> list[dict]:
         sql = "SELECT id, content, contact, status, created_at FROM feedbacks"

@@ -78,7 +78,7 @@
                     {% if links %}
                         {% for l in links %}
                         <div class="link-item">
-                            <a class="issue-link" href="{{ l.url }}" target="_blank">{{ l.text or l.url[:40] }} ↗</a>
+                            <a class="issue-link" href="{{ l.url }}" target="_blank">{% if l.status %}[{{ l.status }}] {% endif %}{{ l.text or l.url[:40] }} ↗</a>
                         </div>
                         {% endfor %}
                     {% endif %}
