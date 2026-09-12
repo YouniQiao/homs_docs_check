@@ -22,19 +22,14 @@ _STATUS_LABELS = {
 feedback_bp = Blueprint("feedback", __name__)
 
 
-def _render_list(db_path: str, status: str = ""):
+def _render_form(db_path: str, msg: str = "", status: str = ""):
     db = IndexDB(db_path)
     try:
         items = db.list_feedbacks(status or None)
     finally:
         db.close()
-    return render_template(
-        "feedback_list.html", items=items, cur=status,
-        status_labels=_STATUS_LABELS)
-
-
-def _render_form(db_path: str, msg: str = ""):
-    return render_template("feedback_submit.html", msg=msg)
+    return render_template("feedback_submit.html", msg=msg, items=items,
+                           cur=status, status_labels=_STATUS_LABELS)
 
 
 # 工厂：因为 db_path 要在 create_app 时注入，暴露 register 函数
@@ -54,11 +49,7 @@ def register_feedback(app, db_path: str):
                     db.close()
                 return _render_form(db_path, msg="✅ 已收到你的反馈，谢谢！")
             return _render_form(db_path, msg="⚠️ 反馈内容不能为空")
-        return _render_form(db_path)
-
-    @bp.route("/feedback/list", strict_slashes=False)
-    def feedback_list():
-        return _render_list(db_path, request.args.get("status", ""))
+        return _render_form(db_path, status=request.args.get("status", ""))
 
     @bp.route("/feedback/<int:fid>/<status>", strict_slashes=False)
     def set_status(fid: int, status: str):
@@ -68,7 +59,7 @@ def register_feedback(app, db_path: str):
                 db.update_feedback_status(fid, status)
             finally:
                 db.close()
-        return redirect(url_for("feedback.feedback_list"))
+        return redirect(url_for("feedback.submit"))
 
     app.register_blueprint(bp)
     return bp
