@@ -35,3 +35,4 @@ nohup.out
 # config.yaml
 # .env
 # *.token
+.smtp.env

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .sub-wrap { max-width: 720px; margin: 8px auto 0; }
+    .sub-card { background: var(--card); border: 1px solid var(--border);
+                border-radius: var(--radius); box-shadow: var(--shadow);
+                padding: 34px 32px; }
+    .sub-card h1 { font-size: 20px; margin-bottom: 8px; }
+    .sub-desc { color: var(--muted); font-size: 13px; margin-bottom: 22px; line-height: 1.7; }
+    .msg { padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+    .msg-ok { background: #e5f6ec; color: #128c4a; }
+    .msg-warn { background: #fdf0e3; color: #c2570a; }
+    .row { display: flex; gap: 8px; margin-bottom: 14px; }
+    .sub-input { flex: 1; padding: 11px 13px; border: 1px solid var(--border);
+                 border-radius: 9px; font-size: 14px; }
+    .sub-input:focus { outline: none; border-color: var(--primary);
+                       box-shadow: 0 0 0 3px rgba(47,84,208,.12); }
+    .btn { padding: 11px 20px; border: none; border-radius: 9px; font-size: 14px;
+           cursor: pointer; }
+    .btn-sub { background: var(--primary); color: #fff; }
+    .btn-sub:hover { opacity: .9; }
+    .btn-unsub { background: #fff; border: 1px solid var(--border); color: var(--text); }
+    .btn-unsub:hover { background: #f7f9fc; }
+    .count { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    .sample-wrap { max-width: 720px; margin: 28px auto 0; }
+    .tips { margin-top: 18px; color: var(--muted); font-size: 12px; line-height: 1.8; }
+</style>
+
+<div class="sub-wrap">
+    <div class="sub-card">
+        <h1>📬 邮件订阅 · 每日文档检查</h1>
+        <p class="sub-desc">订阅后，每天自动把文档检查结果（新增/修改文档、图片 OCR 中文检查、英文文档检查、链接健康检查）汇总，发送到你的邮箱。</p>
+
+        {% if msg %}
+        <div class="msg {{ 'msg-ok' if '✅' in msg or '成功' in msg else 'msg-warn' }}">{{ msg|safe }}</div>
+        {% endif %}
+
+        <form method="post">
+            <div class="row">
+                <input type="email" name="email" class="sub-input"
+                       placeholder="输入你的邮箱地址" value="{{ email }}" required>
+            </div>
+            <div class="row">
+                <button type="submit" name="action" value="subscribe"
+                        class="btn btn-sub">订阅</button>
+                <button type="submit" name="action" value="unsubscribe"
+                        class="btn btn-unsub">退订</button>
+            </div>
+        </form>
+
+        <div class="count">当前 {{ count }} 位订阅用户</div>
+
+        <div class="tips">
+            订阅后每天将收到一份检查结果汇总邮件；<br>
+            随时可退订，无需填写其他信息。
+        </div>
+    </div>
+</div>
+
+<div class="sample-wrap">
+    <div class="sub-card">
+        <h1>📧 邮件日报样例</h1>
+        <p class="sub-desc">订阅后，每天 <b>07:30</b> 会收到一份如下格式的检查日报——汇总当日各模块的同步与检查结果、突出问题项，点击每个板块的「<b>查看当日结果 →</b>」可直接跳转到站点对应详情。以下为 <b>9 月 11 日</b>实际数据示例：</p>
+        <iframe src="/static/sample_mail.html"
+                style="width:100%;height:860px;border:1px solid var(--border);border-radius:10px;background:#f0f2f5;display:block;margin:0 auto;"></iframe>
+    </div>
+</div>
+{% endblock %}

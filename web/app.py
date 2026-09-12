@@ -18,6 +18,7 @@ if str(BASE_DIR) not in sys.path:
 from framework import register_module  # noqa: E402
 from modules import MODULES  # noqa: E402
 from feedback import register_feedback  # noqa: E402
+from subscribe import register_subscribe  # noqa: E402
 
 DB_PATH = str(BASE_DIR / "index.db")
 
@@ -38,6 +39,7 @@ def create_app() -> Flask:
         register_module(app, DB_PATH, module)
 
     register_feedback(app, DB_PATH)
+    register_subscribe(app, DB_PATH)
 
     @app.route("/")
     def home():

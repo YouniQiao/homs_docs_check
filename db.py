@@ -67,6 +67,12 @@ CREATE TABLE IF NOT EXISTS url_cache (
     status      TEXT,                  -- HTTP 状态码或 ERR:xxx
     updated_at  TEXT
 );
+
+CREATE TABLE IF NOT EXISTS subscribers (
+    email      TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    status     TEXT DEFAULT 'active'   -- active / unsubscribed
+);
 """
 
 
@@ -274,3 +280,35 @@ class IndexDB:
         self._conn.execute(
             "UPDATE feedbacks SET status=? WHERE id=?", (status, fid))
         self._conn.commit()
+
+    # ---- 邮件订阅 ----
+    def add_subscriber(self, email: str) -> bool:
+        """新增或重新激活订阅。返回 True=新增, False=已存在。"""
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cur = self._conn.execute(
+            "SELECT 1 FROM subscribers WHERE email=? AND status='active'",
+            (email,))
+        if cur.fetchone():
+            return False
+        self._conn.execute(
+            "INSERT INTO subscribers (email, created_at, status) VALUES (?,?,?)"
+            " ON CONFLICT(email) DO UPDATE SET status='active', created_at=?",
+            (email, now, now, now))
+        self._conn.commit()
+        return True
+
+    def remove_subscriber(self, email: str) -> bool:
+        cur = self._conn.execute(
+            "UPDATE subscribers SET status='unsubscribed' WHERE email=?",
+            (email,))
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def list_active_subscribers(self) -> list[str]:
+        cur = self._conn.execute(
+            "SELECT email FROM subscribers WHERE status='active' ORDER BY created_at")
+        return [r[0] for r in cur.fetchall()]
+
+    def count_subscribers(self) -> int:
+        return self._conn.execute(
+            "SELECT COUNT(*) FROM subscribers WHERE status='active'").fetchone()[0]
