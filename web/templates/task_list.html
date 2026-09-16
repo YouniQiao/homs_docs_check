@@ -1,7 +1,23 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>{{ module.icon }} {{ module.name }}</h1>
-<p class="subtitle">{{ module.description }}</p>
+<style>
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.page-head h1 { margin-top: 0; }
+.page-head .subtitle { margin-top: 6px; }
+.file-link { flex: 0 0 auto; margin-top: 4px; display: inline-flex; align-items: center;
+    gap: 6px; background: var(--primary); color: #fff; text-decoration: none;
+    padding: 9px 18px; border-radius: 8px; font-size: 14px; white-space: nowrap; }
+.file-link:hover { opacity: .9; }
+</style>
+<div class="page-head">
+    <div>
+        <h1>{{ module.icon }} {{ module.name }}</h1>
+        <p class="subtitle">{{ module.description }}</p>
+    </div>
+    {% if module.key == 'sync' %}
+    <a class="file-link" href="https://files.openharmony.cool" target="_blank" rel="noopener">📁 浏览原始文档文件 →</a>
+    {% endif %}
+</div>
 
 {% if ocr_stats is defined and ocr_stats %}
 <div class="stats">
