@@ -56,6 +56,39 @@
         <div class="num" style="color:var(--deleted)">{{ ocr_stats.en_has_cn }}</div>
         <div class="label">⚠️ 英文图检出中文</div>
     </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--deleted)">{{ ocr_stats.errors }}</div>
+        <div class="label">识别失败</div>
+    </div>
+</div>
+{% endif %}
+
+{% if encheck_stats is defined and encheck_stats %}
+<div class="stats">
+    <div class="stat-card">
+        <div class="num">{{ "{:,}".format(encheck_stats.checked) }}</div>
+        <div class="label">检查文档</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--deleted)">{{ "{:,}".format(encheck_stats.hanzi) }}</div>
+        <div class="label">含汉字</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--modified)">{{ "{:,}".format(encheck_stats.punct) }}</div>
+        <div class="label">含标点</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--primary)">{{ "{:,}".format(encheck_stats.url_cn) }}</div>
+        <div class="label">链接URL含中文</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--added)">{{ "{:,}".format(encheck_stats.cn_link) }}</div>
+        <div class="label">含中文链接</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--deleted)">{{ "{:,}".format(encheck_stats.errors) }}</div>
+        <div class="label">读取失败</div>
+    </div>
 </div>
 {% endif %}
 
@@ -100,7 +133,7 @@
 </div>
 {% endif %}
 
-<h2 style="font-size:16px; margin-bottom:12px">同步任务记录</h2>
+<h2 style="font-size:16px; margin-bottom:12px">{{ module.runs_title or '任务记录' }}</h2>
 <table>
     <thead>
         <tr>

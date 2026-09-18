@@ -98,6 +98,7 @@ SYNC_MODULE = {
     "name": "文档同步",
     "icon": "📚",
     "description": "鸿蒙开发者文档每日增量同步（根据页面displayUpdateTime判断是否变更）",
+    "runs_title": "同步任务记录",
     "summary_fields": [("added", "新增"), ("modified", "修改"), ("deleted", "删除")],
     "filters": SYNC_FILTERS,
     "item_columns": [("title", "标题"), ("lang", "语言"), ("catalog", "分类"),

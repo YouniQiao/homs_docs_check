@@ -24,12 +24,14 @@ def _ocr_context(db) -> dict:
         "JOIN runs r ON i.run_id = r.id WHERE r.module_key='ocr'"
     ).fetchall()
     checked: set[str] = set()
-    has_cn = en_has_cn = 0
+    has_cn = en_has_cn = errors = 0
     for item_type, detail_json, item_key in rows:
         if item_key in checked:
             continue
         checked.add(item_key)
-        if item_type == "has_cn":
+        if item_type == "error":
+            errors += 1
+        elif item_type == "has_cn":
             has_cn += 1
             try:
                 d = json.loads(detail_json)
@@ -61,7 +63,7 @@ def _ocr_context(db) -> dict:
                 break
 
     return {"ocr_stats": {"checked": len(checked), "has_cn": has_cn,
-                          "en_has_cn": en_has_cn},
+                          "en_has_cn": en_has_cn, "errors": errors},
             "en_cn_images": en_cn_images}
 
 
@@ -70,19 +72,22 @@ OCR_MODULE = {
     "name": "图片 OCR 检查",
     "icon": "🔍",
     "description": "检测文档图片中的中文（PaddleOCR），全量 + 每日增量",
+    "runs_title": "图片OCR检查记录",
+    "per_page": 30,
     "summary_fields": [("total", "检查总数"), ("has_cn", "含中文"),
-                       ("en_has_cn", "英文图含中文")],
+                       ("en_has_cn", "英文图含中文"), ("errors", "错误")],
     "detail_summary_fields": [("total", "检查总数"), ("has_cn", "含中文"),
                               ("en_has_cn", "英文图含中文"),
-                              ("no_cn", "无中文"), ("errors", "错误")],
+                              ("errors", "错误")],
     "item_columns": [("image", "图片"), ("lang", "语言"), ("ocr_text", "识别文字"),
                      ("confidence", "置信度"), ("doc_url", "来源文档")],
     "filters": [
-        {"key": "lang", "label": "语言", "source": "detail",
+        {"key": "lang", "label": "语言", "source": "detail", "default": "en",
          "options": [("all", "全部"), ("cn", "中文文档"), ("en", "英文文档")]},
-        {"key": "type", "label": "检出", "source": "item_type",
-         "options": [("all", "全部"), ("has_cn", "含中文"), ("no_cn", "无中文")]},
-        {"key": "sort", "label": "排序", "source": "sort",
+        {"key": "type", "label": "检出", "source": "item_type", "default": "has_cn",
+         "options": [("all", "全部"), ("has_cn", "含中文"), ("no_cn", "无中文"),
+                     ("error", "识别失败")]},
+        {"key": "sort", "label": "排序", "source": "sort", "default": "id_desc",
          "options": [("id_desc", "默认"), ("conf_desc", "置信度从高到低"),
                      ("conf_asc", "置信度从低到高")]},
     ],

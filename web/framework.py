@@ -75,10 +75,10 @@ def _apply_filters(items: list[dict], module: dict, args) -> tuple[list[dict], d
     for f in module.get("filters", []):
         key = f["key"]
         # text 控件默认空串；select 控件默认 "all"
-        default_val = "" if f.get("control") == "text" else "all"
+        default_val = f.get("default", "" if f.get("control") == "text" else "all")
         val = args.get(key, default_val)
         state[key] = val
-        skip = (val == default_val) or f.get("source") == "sort"
+        skip = (val == "all") or f.get("source") == "sort"
         if skip:
             continue
         if f["source"] == "item_type":
@@ -233,7 +233,7 @@ def register_module(app, db_path: str, module: dict):
             col_defs = _norm_columns(module)
         finally:
             db.close()
-        if module.get("filters") and request.args:
+        if module.get("filters"):
             items, _ = _apply_filters(items, module, request.args)
         buf = io.StringIO()
         w = csv.writer(buf)

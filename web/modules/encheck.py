@@ -9,14 +9,65 @@ detail: doc_key, title, doc_url, catalog,
         url_cn_chars, url_cn_char_count, url_cn_links, cn_links, cn_link_count
 """
 
+from __future__ import annotations
+
+import json
+
+
+def _encheck_context(db) -> dict:
+    """按文档去重（取最新一次结果）统计各项问题数，供顶部概览卡片展示。"""
+    rows = db._conn.execute(
+        "SELECT i.item_key, i.item_type, i.detail_json FROM items i "
+        "JOIN runs r ON i.run_id = r.id WHERE r.module_key='encheck' "
+        "ORDER BY r.id ASC, i.id ASC"
+    ).fetchall()
+    latest: dict[str, tuple] = {}
+    for item_key, item_type, detail_json in rows:
+        latest[item_key] = (item_type, detail_json)  # 后写覆盖 → 保留最新
+
+    # "检查文档"取英文文档总数（正常文档不写 item，无法从 items 统计）
+    try:
+        checked_total = db._conn.execute(
+            "SELECT COUNT(*) FROM docs WHERE lang='en'").fetchone()[0]
+    except Exception:
+        checked_total = len(latest)
+
+    stats = {"checked": checked_total, "hanzi": 0, "punct": 0, "url_cn": 0,
+             "cn_link": 0, "clean": 0, "errors": 0}
+    for item_type, detail_json in latest.values():
+        if item_type == "error":
+            stats["errors"] += 1
+            continue
+        try:
+            d = json.loads(detail_json)
+        except Exception:
+            continue
+        hit = False
+        if d.get("hanzi_count", 0) > 0:
+            stats["hanzi"] += 1
+            hit = True
+        if d.get("punct_count", 0) > 0:
+            stats["punct"] += 1
+            hit = True
+        if d.get("url_cn_char_count", 0) > 0:
+            stats["url_cn"] += 1
+            hit = True
+        if d.get("cn_link_count", 0) > 0:
+            stats["cn_link"] += 1
+            hit = True
+        if not hit:
+            stats["clean"] += 1
+    return {"encheck_stats": stats}
+
 
 ENCHECK_MODULE = {
     "key": "encheck",
     "name": "英文文档检查",
     "icon": "🌐",
     "description": "检查英文文档中的中文字符与中文跳转链接",
+    "runs_title": "英文文档检查记录",
     "summary_fields": [("total", "检查文档"), ("hanzi", "含汉字"),
-                       ("cn_link", "含中文链接")],
+                       ("url_cn", "链接URL含中文"), ("cn_link", "含中文链接")],
     "detail_summary_fields": [("total", "检查文档"), ("hanzi", "含汉字"),
                               ("punct", "含标点"),
                               ("url_cn", "链接URL含中文"),
@@ -57,4 +108,5 @@ ENCHECK_MODULE = {
         "clean": ("badge-added", "正常"),
         "error": ("badge-failed", "读取失败"),
     },
+    "context_provider": _encheck_context,
 }
