@@ -8,6 +8,29 @@
     gap: 6px; background: var(--primary); color: #fff; text-decoration: none;
     padding: 9px 18px; border-radius: 8px; font-size: 14px; white-space: nowrap; }
 .file-link:hover { opacity: .9; }
+
+/* 文档与图片统计：卡片式总览 */
+.lod-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 16px; margin-bottom: 28px; }
+.lang-card { background: var(--card); border: 1px solid var(--border);
+             border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; }
+.lang-card .lc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.lang-card .lc-title { font-size: 15px; font-weight: 700; }
+.lang-card .lc-sum { margin-left: auto; font-size: 12px; color: var(--muted); }
+.lang-card .lc-sum b { color: var(--text); }
+.cat-row { margin-bottom: 13px; }
+.cat-row:last-child { margin-bottom: 2px; }
+.cat-top { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.cat-name { font-weight: 600; }
+.cat-nums { margin-left: auto; white-space: nowrap; font-size: 12px; color: var(--muted); }
+.cat-nums b { color: var(--text); font-size: 13px; }
+.cat-bar { height: 7px; border-radius: 5px; background: #eef1f7; margin-top: 6px; overflow: hidden; }
+.cat-bar > span { display: block; height: 100%; border-radius: 5px;
+                  background: linear-gradient(90deg, #5b7cfa, #2f54d0); }
+.lang-card.en .cat-bar > span { background: linear-gradient(90deg, #34b37a, #128c4a); }
+.lang-card.cn .lc-dot { color: #2f54d0; }
+.lang-card.en .lc-dot { color: #128c4a; }
+.lc-dot { font-size: 12px; }
 </style>
 <div class="page-head">
     <div>
@@ -36,28 +59,45 @@
 </div>
 {% endif %}
 
-{% if catalog_stats is defined and catalog_stats %}
+{% if catalog_overview is defined and catalog_overview %}
 <h2 style="font-size:16px; margin-bottom:12px">文档与图片统计</h2>
-<table style="margin-bottom:24px">
-    <thead>
-        <tr>
-            <th>语言</th>
-            <th>分类</th>
-            <th style="text-align:right">文档数</th>
-            <th style="text-align:right">图片数</th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for c in catalog_stats %}
-        <tr>
-            <td style="font-weight:600">{{ c.lang }}</td>
-            <td>{{ c.catalog }}</td>
-            <td style="text-align:right">{{ c.docs }}</td>
-            <td style="text-align:right">{{ c.imgs }}</td>
-        </tr>
+<div class="stats">
+    <div class="stat-card">
+        <div class="num">{{ "{:,}".format(catalog_overview.totals.docs) }}</div>
+        <div class="label">文档总数</div>
+    </div>
+    <div class="stat-card">
+        <div class="num">{{ "{:,}".format(catalog_overview.totals.imgs) }}</div>
+        <div class="label">图片总数</div>
+    </div>
+    {% for L in catalog_overview.langs %}
+    <div class="stat-card">
+        <div class="num" style="color:{{ '#2f54d0' if L.lang == 'cn' else '#128c4a' }}">{{ "{:,}".format(L.docs) }}</div>
+        <div class="label">{{ L.label }}文档 · 🖼 {{ "{:,}".format(L.imgs) }}</div>
+    </div>
     {% endfor %}
-    </tbody>
-</table>
+</div>
+
+<div class="lod-grid">
+    {% for L in catalog_overview.langs %}
+    <div class="lang-card {{ L.lang }}">
+        <div class="lc-head">
+            <span class="lc-dot">●</span>
+            <span class="lc-title">{{ L.label }}文档</span>
+            <span class="lc-sum"><b>{{ "{:,}".format(L.docs) }}</b> 篇 · 🖼 <b>{{ "{:,}".format(L.imgs) }}</b></span>
+        </div>
+        {% for c in L.catalogs %}
+        <div class="cat-row">
+            <div class="cat-top">
+                <span class="cat-name">{{ c.label }}</span>
+                <span class="cat-nums"><b>{{ "{:,}".format(c.docs) }}</b> 篇 · 🖼 {{ "{:,}".format(c.imgs) }}</span>
+            </div>
+            <div class="cat-bar"><span style="width:{{ c.pct }}%"></span></div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
 {% endif %}
 
 <h2 style="font-size:16px; margin-bottom:12px">同步任务记录</h2>

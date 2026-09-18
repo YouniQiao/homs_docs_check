@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .a2a-msg { white-space: pre-wrap; word-break: break-word; font-size: 13px; max-width: 720px; }
+  .a2a-row-in td:first-child { border-left: 3px solid var(--primary); }
+  .a2a-row-out td:first-child { border-left: 3px solid var(--added); }
+  .usage { background: var(--card); border: 1px solid var(--border);
+           border-radius: var(--radius); box-shadow: var(--shadow);
+           padding: 20px 22px; margin-bottom: 24px; }
+  .usage .lead { font-size: 14px; color: var(--muted); margin-bottom: 14px; }
+  .usage h3 { font-size: 14px; margin: 18px 0 6px; }
+  .usage code { background: #f0f2f7; padding: 1px 6px; border-radius: 5px;
+                font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+                font-size: 12px; color: #33405a; }
+  .usage pre { background: #0f172a; color: #e6edf3; padding: 12px 14px;
+               border-radius: 8px; overflow-x: auto; font-size: 12px; line-height: 1.6;
+               margin-top: 8px; white-space: pre; }
+  .usage .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  table.kv { width: auto; background: transparent; border: none; box-shadow: none;
+             border-radius: 0; overflow: visible; }
+  table.kv td { border: none; padding: 6px 16px 6px 0; font-size: 13px; }
+  table.kv td:first-child { color: var(--muted); white-space: nowrap; }
+  table.kv tbody tr:hover { background: transparent; }
+  .section { margin-bottom: 40px; }
+  .section + .section { border-top: 1px solid var(--border); padding-top: 32px; }
+  .conv { background: var(--card); border: 1px solid var(--border);
+          border-radius: var(--radius); box-shadow: var(--shadow);
+          margin-bottom: 10px; padding: 14px 18px; }
+  .conv summary { cursor: pointer; font-size: 14px; font-weight: 600; }
+  .conv-msg { margin-top: 10px; padding: 10px 12px; border-radius: 8px;
+              font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+  .conv-user { background: #f7f9fc; }
+  .conv-agent { background: var(--primary-soft); }
+  .conv-role { font-size: 11px; font-weight: 700; text-transform: uppercase;
+               color: var(--muted); margin-bottom: 4px; }
+</style>
+
+<div class="section">
+  <h1>使用方法</h1>
+  <p class="subtitle">把你的 Agent 接到本服务，就能让它像调用一个「远程助手」一样，把任务交给本机 Hermes 处理。</p>
+
+  <div class="usage">
+    <p class="lead"><b>三步：① 拿地址 → ② 要 Token → ③ 填进你的 Agent。</b></p>
+
+    <table class="kv">
+      <tr>
+        <td>① 服务地址</td>
+        <td><code>https://a2a.openharmony.cool/</code></td>
+      </tr>
+      <tr>
+        <td>② 认证 Token</td>
+        <td>Bearer Token，<b>向运维索取</b>（出于安全本页不显示）</td>
+      </tr>
+      <tr>
+        <td>③ 能做什么</td>
+        <td>联网搜索 / 查资料、检索历史会话、记笔记、看图</td>
+      </tr>
+      <tr>
+        <td>自动发现</td>
+        <td>支持 A2A 的客户端可直接填
+          <code>https://a2a.openharmony.cool/.well-known/agent-card.json</code></td>
+      </tr>
+    </table>
+
+    <h3>方式 A：对方的 Agent 也是 Hermes（最简单）</h3>
+    <p class="hint" style="margin-top:2px">在它的 <code>config.yaml</code> 里加一段，重启后即可在对话中调用：</p>
+    {% raw %}<pre>a2a_agents:
+  openharmony_hermes:                        # 名字随意起
+    url: "https://a2a.openharmony.cool/"
+    auth: { type: bearer, token: "&lt;TOKEN&gt;" }</pre>{% endraw %}
+    <p class="hint">之后直接对它说：「让 openharmony_hermes 帮我查一下 XXX」。</p>
+
+    <h3>方式 B：其他框架 / 自己写程序</h3>
+    <p class="hint" style="margin-top:2px">用一条标准 A2A 请求就能测通：</p>
+    {% raw %}<pre>curl -X POST https://a2a.openharmony.cool/ \
+  -H "Authorization: Bearer &lt;TOKEN&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"SendMessage",
+       "params":{"message":{"role":"ROLE_USER","messageId":"m1",
+                 "parts":[{"text":"你能做什么？"}]}}}'</pre>{% endraw %}
+    <p class="hint">返回 JSON 里的结果，就是 Hermes 的答复。</p>
+  </div>
+</div>
+
+<div class="section">
+  <h1>🤖 A2A 调用记录</h1>
+  <p class="subtitle">Hermes A2A 平台与外部 agent 的往来消息，只读展示。数据源：<span class="mono">a2a_audit.jsonl</span> / <span class="mono">a2a_conversations/</span></p>
+
+  <div class="stats">
+    <div class="stat-card"><div class="num">{{ stats.total }}</div><div class="label">总消息</div></div>
+    <div class="stat-card"><div class="num">{{ stats.inbound }}</div><div class="label">入站</div></div>
+    <div class="stat-card"><div class="num">{{ stats.outbound }}</div><div class="label">出站</div></div>
+    <div class="stat-card"><div class="num">{{ stats.peers }}</div><div class="label">来源 IP</div></div>
+    <div class="stat-card"><div class="num">{{ convs|length }}</div><div class="label">会话</div></div>
+  </div>
+
+  <form method="get" class="filters">
+    <label>方向</label>
+    <select name="direction">
+      <option value="" {{ 'selected' if not cur_direction }}>全部</option>
+      <option value="inbound" {{ 'selected' if cur_direction == 'inbound' }}>入站</option>
+      <option value="outbound" {{ 'selected' if cur_direction == 'outbound' }}>出站</option>
+    </select>
+    <label>来源</label>
+    <select name="peer">
+      <option value="" {{ 'selected' if not cur_peer }}>全部</option>
+      {% for p in peers %}
+      <option value="{{ p }}" {{ 'selected' if cur_peer == p }}>{{ p }}</option>
+      {% endfor %}
+    </select>
+    <button class="filter-apply" type="submit">过滤</button>
+    <span class="filter-count">共 {{ rows|length }} 条</span>
+  </form>
+
+  {% if rows %}
+  <table>
+    <thead>
+      <tr><th>时间</th><th>方向</th><th>来源</th><th>任务 ID</th><th>内容</th></tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="{{ 'a2a-row-in' if r.direction == 'inbound' else 'a2a-row-out' }}">
+        <td class="mono">{{ r.ts_h }}</td>
+        <td>
+          {% if r.direction == 'inbound' %}<span class="badge badge-info">入站</span>
+          {% else %}<span class="badge badge-success">出站</span>{% endif %}
+        </td>
+        <td class="mono">{{ r.peer }}</td>
+        <td class="mono">{{ r.task_id }}</td>
+        <td><div class="a2a-msg">{{ r.summary }}</div></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">暂无记录</div>
+  {% endif %}
+
+  <div class="sched">
+    <h2>会话上下文</h2>
+    {% if convs %}
+      {% for c in convs %}
+      <details class="conv">
+        <summary>{{ c.name }} · {{ c.msgs|length }} 条 · {{ c.mtime_h }}</summary>
+        {% for m in c.msgs %}
+        <div class="conv-msg {{ 'conv-user' if m.role == 'user' else 'conv-agent' }}">
+          <div class="conv-role">{{ m.role }}{% if m.ts_h %} · {{ m.ts_h }}{% endif %}</div>
+          {{ m.text }}
+        </div>
+        {% endfor %}
+      </details>
+      {% endfor %}
+    {% else %}
+      <div class="empty">暂无会话上下文</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
