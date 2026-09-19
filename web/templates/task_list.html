@@ -92,6 +92,27 @@
 </div>
 {% endif %}
 
+{% if linkcheck_stats is defined and linkcheck_stats %}
+<div class="stats">
+    <div class="stat-card">
+        <div class="num">{{ "{:,}".format(linkcheck_stats.checked) }}</div>
+        <div class="label">检查文档</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--deleted)">{{ "{:,}".format(linkcheck_stats.dead) }}</div>
+        <div class="label">真死链</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--deleted)">{{ "{:,}".format(linkcheck_stats.vintage) }}</div>
+        <div class="label">误链历史版本</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--primary)">{{ "{:,}".format(linkcheck_stats.anchor_miss) }}</div>
+        <div class="label">锚点失效</div>
+    </div>
+</div>
+{% endif %}
+
 {% if catalog_overview is defined and catalog_overview %}
 <h2 style="font-size:16px; margin-bottom:12px">文档与图片统计</h2>
 <div class="stats">
@@ -158,7 +179,8 @@
                 <span class="badge {{ b[0] }}">{{ b[1] }}</span>
             </td>
             {% for f, label in module.summary_fields %}
-            <td style="text-align:right">{{ r.summary.get(f, 0) }}</td>
+            {% set v = r.summary.get(f) %}
+            <td style="text-align:right">{{ "{:,}".format(v) if v is number else (v if v is not none else "—") }}</td>
             {% endfor %}
             <td><a href="/{{ module.key }}/run/{{ r.id }}">详情 →</a></td>
         </tr>

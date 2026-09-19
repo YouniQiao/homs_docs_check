@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from datetime import datetime
 
 
@@ -82,7 +83,7 @@ class IndexDB:
         # timeout=30：WAL 下读写不冲突，但多写者会等锁，加超时避免永久阻塞
         self._conn = sqlite3.connect(self.db_path, timeout=30)
         self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA busy_timeout=30000")
+        self._conn.execute("PRAGMA busy_timeout=120000")
         self._conn.executescript(SCHEMA)
         # 迁移：旧库补 docs 列
         cols = [r[1] for r in self._conn.execute("PRAGMA table_info(docs)")]
@@ -160,26 +161,42 @@ class IndexDB:
         return {"total": total, "by_lang": by_lang, "by_catalog": by_catalog,
                 "by_lang_catalog": by_lang_catalog}
 
+    # ---- 写操作通用：自动重试 'database is locked' ----
+    def _exec_retry(self, sql: str, params: tuple = (), tries: int = 30):
+        """执行写语句，遇 'database is locked' 自动等待重试。
+
+        其他进程（如长跑的全量链接检查）持有写事务时，仅靠 busy_timeout 可能超时；
+        这里最多重试 tries 次（每次 2s），跨进程争用也能自愈。
+        """
+        for i in range(tries):
+            try:
+                return self._conn.execute(sql, params)
+            except sqlite3.OperationalError as e:
+                if "locked" not in str(e) or i == tries - 1:
+                    raise
+                time.sleep(2)
+
     # ---- runs（通用任务历史）----
     def start_run(self, module_key: str) -> int:
-        cur = self._conn.execute(
+        cur = self._exec_retry(
             "INSERT INTO runs (module_key, started_at, status) VALUES (?,?, 'running')",
             (module_key, datetime.now().isoformat(timespec="seconds")),
         )
-        self._conn.commit()
-        return cur.lastrowid
+        self.commit()
+        assert cur is not None
+        return int(cur.lastrowid or 0)
 
     def finish_run(self, run_id: int, summary: dict, status: str = "success",
                    error: str = None):
-        self._conn.execute(
+        self._exec_retry(
             "UPDATE runs SET finished_at=?, status=?, summary_json=?, error=? WHERE id=?",
             (datetime.now().isoformat(timespec="seconds"), status,
              json.dumps(summary, ensure_ascii=False), error, run_id),
         )
-        self._conn.commit()
+        self.commit()
 
     def add_item(self, run_id: int, item_key: str, item_type: str, detail: dict):
-        self._conn.execute(
+        self._exec_retry(
             "INSERT INTO items (run_id, item_key, item_type, detail_json) VALUES (?,?,?,?)",
             (run_id, item_key, item_type, json.dumps(detail, ensure_ascii=False)),
         )
@@ -231,8 +248,16 @@ class IndexDB:
             })
         return result
 
-    def commit(self):
-        self._conn.commit()
+    def commit(self, tries: int = 30):
+        """带重试的提交（写锁被其他进程占用时等待，而不是直接失败）。"""
+        for i in range(tries):
+            try:
+                self._conn.commit()
+                return
+            except sqlite3.OperationalError as e:
+                if "locked" not in str(e) or i == tries - 1:
+                    raise
+                time.sleep(2)
 
     def close(self):
         self._conn.commit()
@@ -255,9 +280,15 @@ class IndexDB:
             "SELECT status FROM url_cache WHERE url=?", (url,)).fetchone()
         return r[0] if r else None
 
+    def get_url_cache_entry(self, url: str) -> tuple[str, str] | None:
+        """返回 (status, updated_at) 或 None（供 TTL 判断）。"""
+        r = self._conn.execute(
+            "SELECT status, updated_at FROM url_cache WHERE url=?", (url,)).fetchone()
+        return (r[0], r[1]) if r else None
+
     def set_url_cache(self, url: str, status: str):
         # 不即时 commit：批量写入后由调用方统一 commit，减少锁竞争
-        self._conn.execute(
+        self._exec_retry(
             "INSERT INTO url_cache (url, status, updated_at) VALUES (?,?,?)"
             " ON CONFLICT(url) DO UPDATE SET status=excluded.status,"
             " updated_at=excluded.updated_at",

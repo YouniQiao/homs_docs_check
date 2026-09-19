@@ -116,6 +116,12 @@ def _apply_filters(items: list[dict], module: dict, args) -> tuple[list[dict], d
         items.sort(key=lambda it: it["detail"].get("int_missing_count", 0), reverse=True)
     elif sort == "ext_desc":
         items.sort(key=lambda it: it["detail"].get("ext_dead_count", 0), reverse=True)
+    elif isinstance(sort, str) and (sort.endswith("_desc") or sort.endswith("_asc")) \
+            and sort not in ("id_desc", "conf_desc", "conf_asc", "int_desc", "ext_desc"):
+        # 通用排序：<detail字段>_desc / <detail字段>_asc
+        rev = sort.endswith("_desc")
+        fld = sort[:-5] if rev else sort[:-4]
+        items.sort(key=lambda it: it["detail"].get(fld, 0) or 0, reverse=rev)
     return items, state
 
 
@@ -173,6 +179,8 @@ def register_module(app, db_path: str, module: dict):
         db = IndexDB(db_path)
         try:
             runs = db.list_runs(key, limit=100)
+            if module.get("runs_provider"):
+                runs = module["runs_provider"](db, runs)
             extra = {}
             if module.get("context_provider"):
                 extra = module["context_provider"](db)
@@ -190,10 +198,14 @@ def register_module(app, db_path: str, module: dict):
             # run_id 是全局主键，校验是否属于当前模块
             if run and run["module_key"] != key:
                 abort(404)
+            if run and module.get("runs_provider"):
+                run = module["runs_provider"](db, [run])[0]
             items = db.get_items(run_id) if run else []
         finally:
             db.close()
         filter_state = {}
+        if module.get("item_visible"):
+            items = [it for it in items if module["item_visible"](it)]
         if module.get("filters"):
             items, filter_state = _apply_filters(items, module, request.args)
         # 分页：每页 per_page（模块可配置，默认 100），在筛选后内存切片
@@ -233,6 +245,8 @@ def register_module(app, db_path: str, module: dict):
             col_defs = _norm_columns(module)
         finally:
             db.close()
+        if module.get("item_visible"):
+            items = [it for it in items if module["item_visible"](it)]
         if module.get("filters"):
             items, _ = _apply_filters(items, module, request.args)
         buf = io.StringIO()

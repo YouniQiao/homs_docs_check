@@ -48,8 +48,10 @@ DETAILS = {
     },
     "linkcheck": {
         "title": "链接健康检查",
-        "focus": [("ext_dead", "外部死链"), ("unreachable", "不可达"),
-                  ("vintage", "误链历史版本"), ("anchor_miss", "锚点失效")],
+        "fields": [("checked", "检查文档"), ("dead", "真死链"),
+                   ("vintage", "误链历史版本"), ("anchor_miss", "锚点失效")],
+        "focus": [("dead", "真死链"), ("vintage", "误链历史版本"),
+                  ("anchor_miss", "锚点失效")],
         "zero_note": "链接检查正常",
     },
 }

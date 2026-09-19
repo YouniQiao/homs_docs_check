@@ -8,8 +8,9 @@
 {% set sum_fields = module.detail_summary_fields or module.summary_fields %}
 <div class="detail-summary">
     {% for f, label in sum_fields %}
+    {% set v = run.summary.get(f) %}
     <div class="stat-card">
-        <div class="num">{{ run.summary.get(f, 0) }}</div>
+        <div class="num">{{ "{:,}".format(v) if v is number else (v if v is not none else "—") }}</div>
         <div class="label">{{ label }}</div>
     </div>
     {% endfor %}
