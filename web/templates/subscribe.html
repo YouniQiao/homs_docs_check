@@ -28,8 +28,8 @@
 
 <div class="sub-wrap">
     <div class="sub-card">
-        <h1>📬 邮件订阅 · 每日文档检查</h1>
-        <p class="sub-desc">订阅后，每天自动把文档检查结果（新增/修改文档、图片 OCR 中文检查、英文文档检查、链接健康检查）汇总，发送到你的邮箱。</p>
+        <h1>📬 邮件订阅 · 文档检查报告</h1>
+        <p class="sub-desc">订阅后，<b>每天 07:30</b> 自动把文档检查结果（新增/修改文档、图片 OCR 中文检查、英文文档检查、链接健康检查）汇总发送到你的邮箱；此外<b>每周一 00:00</b>（周日复核任务完成后）会额外收到一封《每周复核周报》。</p>
 
         {% if msg %}
         <div class="msg {{ 'msg-ok' if '✅' in msg or '成功' in msg else 'msg-warn' }}">{{ msg|safe }}</div>
@@ -51,7 +51,7 @@
         <div class="count">当前 {{ count }} 位订阅用户</div>
 
         <div class="tips">
-            订阅后每天将收到一份检查结果汇总邮件；<br>
+            订阅后每天将收到一份检查结果汇总邮件，每周一另收一封复核周报；<br>
             随时可退订，无需填写其他信息。
         </div>
     </div>
@@ -63,6 +63,15 @@
         <p class="sub-desc">订阅后，每天 <b>07:30</b> 会收到一份如下格式的检查日报——汇总当日各模块的同步与检查结果、突出问题项，点击每个板块的「<b>查看当日结果 →</b>」可直接跳转到站点对应详情。以下为 <b>9 月 11 日</b>实际数据示例：</p>
         <iframe src="/static/sample_mail.html"
                 style="width:100%;height:860px;border:1px solid var(--border);border-radius:10px;background:#f0f2f5;display:block;margin:0 auto;"></iframe>
+    </div>
+</div>
+
+<div class="sample-wrap">
+    <div class="sub-card">
+        <h1>📊 每周复核周报样例</h1>
+        <p class="sub-desc">每周日 22:00 执行全量问题复核，其后 <b>00:00</b> 发送《每周复核周报》——把<b>全部历史问题</b>重新核一遍（已解决 / 仍存在 / 已失效），给出总体解决率，并与上周对比升降。周报采用紫色系版式、主题带【周报】前缀，一眼可与日报区分。以下为实际数据示例：</p>
+        <iframe src="/static/sample_weekly_mail.html"
+                style="width:100%;height:720px;border:1px solid var(--border);border-radius:10px;background:#f0f2f5;display:block;margin:0 auto;"></iframe>
     </div>
 </div>
 {% endblock %}
