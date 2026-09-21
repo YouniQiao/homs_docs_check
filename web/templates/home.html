@@ -1,11 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
-.home-cards .icon { width: 54px; height: 54px; display: flex; align-items: center;
-     justify-content: center; background: var(--primary-soft); border-radius: 14px;
-     font-size: 26px; margin-bottom: 16px; }
-.home-cards .name { font-size: 16px; }
-.home-group { margin-bottom: 30px; }
+/* 首页模块卡片：图标 + 标题同一行，卡片更紧凑 */
+.home-cards { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.home-cards .card { padding: 20px 16px; }
+.hc-head { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+.hc-icon { flex: 0 0 30px; width: 30px; height: 30px; display: flex; align-items: center;
+     justify-content: center; background: var(--primary-soft); border-radius: 9px;
+     font-size: 17px; line-height: 1; }
+.hc-name { font-size: 15px; font-weight: 600; display: flex; align-items: center;
+     gap: 6px; flex-wrap: wrap; }
+.home-cards .desc { font-size: 12.5px; line-height: 1.5; }
+.home-group { margin-bottom: 26px; }
 .home-group > h2 { font-size: 15px; font-weight: 600; color: #41485c;
      display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .home-group > h2::before { content: ""; width: 3px; height: 15px;
@@ -22,8 +28,10 @@
 
 {% macro modcard(m) %}
 <a class="card" href="/{{ m.key }}/">
-    <div class="icon">{{ m.icon }}</div>
-    <div class="name">{{ m.name }}{% if m.debug %} <span class="badge badge-modified">调试中</span>{% endif %}</div>
+    <div class="hc-head">
+        <span class="hc-icon">{{ m.icon }}</span>
+        <span class="hc-name">{{ m.name }}{% if m.debug %}<span class="badge badge-modified">调试中</span>{% endif %}</span>
+    </div>
     <div class="desc">{{ m.description }}</div>
 </a>
 {% endmacro %}

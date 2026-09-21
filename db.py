@@ -83,6 +83,26 @@ CREATE TABLE IF NOT EXISTS doc_anchors (
     anchor  TEXT NOT NULL,
     PRIMARY KEY (doc_key, anchor)
 );
+
+-- 忽略记录：把"某些检测结果"标为不看（永久，手动恢复）。
+-- target：linkcheck=链接 URL；encheck=doc_key；ocr/imgnorm=图片相对路径。
+-- doc_key：仅 linkcheck 的"仅本文档"忽略使用；'' = 不限文档（全局）。
+-- 恢复不物理删除（restored_at 标记），保留历史；无鉴权，用 *_ip 留痕。
+CREATE TABLE IF NOT EXISTS ignores (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    module_key  TEXT NOT NULL,
+    target      TEXT NOT NULL,
+    doc_key     TEXT NOT NULL DEFAULT '',
+    kind        TEXT NOT NULL,
+    reason      TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL,
+    created_ip  TEXT NOT NULL DEFAULT '',
+    restored_at TEXT,
+    restored_ip TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ignores_active
+    ON ignores(module_key, target, doc_key, kind) WHERE restored_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_ignores_lookup ON ignores(module_key, target);
 """
 
 
@@ -176,6 +196,65 @@ class IndexDB:
                  % ",".join("?" * len(chunk)))
             for dk, a in self._conn.execute(q, chunk):
                 out[dk].add(a)
+        return out
+
+    # ── 忽略（把检测结果标为不看；恢复只标记、不删记录）──────────────
+    def add_ignore(self, module_key: str, target: str, kind: str, doc_key: str = "",
+                   reason: str = "", ip: str = "") -> bool:
+        """新增忽略；已存在生效中的同键记录则跳过。返回是否新增。"""
+        cur = self._exec_retry(
+            "INSERT OR IGNORE INTO ignores"
+            " (module_key, target, doc_key, kind, reason, created_at, created_ip)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (module_key, target, doc_key, kind, reason or "",
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S"), ip or ""))
+        self.commit()
+        return bool(cur is not None and cur.rowcount)
+
+    def restore_ignore(self, ignore_id: int, ip: str = "") -> bool:
+        """恢复单条忽略（标记 restored_at，不物理删除）。"""
+        cur = self._exec_retry(
+            "UPDATE ignores SET restored_at=?, restored_ip=?"
+            " WHERE id=? AND restored_at IS NULL",
+            (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), ip or "", ignore_id))
+        self.commit()
+        return bool(cur is not None and cur.rowcount)
+
+    def restore_ignores_for(self, module_key: str, target: str, kind: str,
+                            doc_key: str = "", ip: str = "") -> int:
+        """恢复某 (模块,目标,类型) 下所有生效中的忽略（全局 + 该文档范围）。"""
+        cur = self._exec_retry(
+            "UPDATE ignores SET restored_at=?, restored_ip=?"
+            " WHERE module_key=? AND target=? AND kind=? AND restored_at IS NULL"
+            " AND (doc_key='' OR doc_key=?)",
+            (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), ip or "",
+             module_key, target, kind, doc_key or ""))
+        self.commit()
+        return int(cur.rowcount) if cur is not None else 0
+
+    def list_ignores(self, module_key: str = None, active_only: bool = True) -> list[dict]:
+        """忽略记录（默认只看生效中的）；按 id 倒序。"""
+        sql = ("SELECT id, module_key, target, doc_key, kind, reason, created_at,"
+               " created_ip, restored_at, restored_ip FROM ignores")
+        where, params = [], []
+        if module_key:
+            where.append("module_key=?")
+            params.append(module_key)
+        if active_only:
+            where.append("restored_at IS NULL")
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY id DESC"
+        cols = ["id", "module_key", "target", "doc_key", "kind", "reason", "created_at",
+                "created_ip", "restored_at", "restored_ip"]
+        return [dict(zip(cols, r)) for r in self._conn.execute(sql, params).fetchall()]
+
+    def active_ignore_map(self) -> dict:
+        """生效中的忽略按模块归组 → {module_key: [{target,doc_key,kind}]}（匹配用）。"""
+        out: dict = {}
+        for r in self.list_ignores(active_only=True):
+            out.setdefault(r["module_key"], []).append(
+                {"target": r["target"], "doc_key": r["doc_key"], "kind": r["kind"]})
         return out
 
     def mark_deleted(self, doc_key: str):

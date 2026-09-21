@@ -20,6 +20,8 @@ from db import IndexDB  # noqa: E402
 from email_sender import is_configured, send_bulk  # noqa: E402
 from modules import MODULES  # noqa: E402
 
+import ignores  # noqa: E402
+
 DB_PATH = BASE / "index.db"
 SITE = "https://docscheck.openharmony.cool"
 
@@ -95,6 +97,78 @@ def _issue_count(mk: str, s: dict) -> int:
     return sum(int(s.get(f, 0) or 0) for f in FOCUS_FIELDS.get(mk, set()))
 
 
+# 支持忽略的模块：日报里的数字按当前忽略状态重算（已忽略不计入）
+_IGNORABLE = ("encheck", "ocr", "linkcheck")
+
+
+def _recount_run(db, mk: str, run_id: int, rules: dict) -> tuple[dict, int]:
+    """按忽略状态重算该 run 的关注字段；返回 (字段值, 已忽略数)。口径同站点概览卡。"""
+    rows = db._conn.execute(
+        "SELECT item_type, detail_json FROM items WHERE run_id=? ORDER BY id",
+        (run_id,)).fetchall()
+    items = []
+    for it_type, dj in rows:
+        try:
+            items.append((it_type, json.loads(dj) if dj else {}))
+        except Exception:
+            pass
+    if mk == "linkcheck":
+        out = {"dead": 0, "vintage": 0, "anchor_miss": 0}
+        ign = 0
+        for _t, d in items:
+            d2, i2, _r = ignores.strip("linkcheck", d, rules)
+            out["dead"] += d2.get("dead_count", 0)
+            out["vintage"] += d2.get("vintage_count", 0)
+            out["anchor_miss"] += d2.get("anchor_miss_count", 0)
+            ign += i2
+        return out, ign
+    if mk == "encheck":
+        latest: dict = {}
+        for _t, d in items:
+            if d.get("doc_key"):
+                latest[d["doc_key"]] = d
+        out = {"hanzi": 0, "punct": 0, "url_cn": 0, "cn_link": 0}
+        ign = 0
+        for d in latest.values():
+            d2, i2, _r = ignores.strip("encheck", d, rules)
+            for f, key in (("hanzi_count", "hanzi"), ("punct_count", "punct"),
+                           ("url_cn_char_count", "url_cn"), ("cn_link_count", "cn_link")):
+                if d2.get(f, 0) > 0:
+                    out[key] += 1
+            ign += i2
+        return out, ign
+    if mk == "ocr":
+        seen: set = set()
+        en_has_cn = ign = 0
+        for it_type, d in items:
+            img = d.get("image")
+            if not img or img in seen:
+                continue
+            seen.add(img)
+            if d.get("lang") != "en":
+                continue
+            d2, i2, _r = ignores.strip("ocr", d, rules, it_type)
+            if d2.get("has_cn"):
+                en_has_cn += 1
+            ign += i2
+        return {"en_has_cn": en_has_cn}, ign
+    return {}, 0
+
+
+def adjust_runs_for_ignores(db, runs: list[tuple]) -> list[tuple]:
+    """把各模块的关注字段按当前忽略状态重算，并记录忽略数（供卡片提示）。"""
+    rules = ignores.active_map(db)
+    out = []
+    for mk, ts, st, s, rid in runs:
+        s = dict(s or {})
+        if mk in _IGNORABLE:
+            fields, ign = _recount_run(db, mk, rid, rules)
+            s.update(fields)
+            s["_ignored"] = ign
+        out.append((mk, ts, st, s, rid))
+    return out
+
+
 def _module_card(mk: str, ts: str, status: str, s: dict, run_id: int,
                  show_link: bool = True) -> str:
     if mk not in DETAILS:
@@ -126,6 +200,9 @@ def _module_card(mk: str, ts: str, status: str, s: dict, run_id: int,
 
     # 状态提示行（关注项汇总）+ 当日结果链接
     issues = _issue_count(mk, s)
+    ign = int(s.get("_ignored", 0) or 0)
+    ig_note = (f'<span style="color:{C_GRAY};font-size:12px;">（另有 {ign} 处已忽略）</span>'
+               if ign else "")
     if MODE.get(mk) == "changes":
         note = (f'<span style="color:{C_GRAY}">{det["zero_note"]}</span>'
                 if issues == 0 else "")
@@ -133,6 +210,8 @@ def _module_card(mk: str, ts: str, status: str, s: dict, run_id: int,
         note = (f'<span style="color:{C_GREEN};font-weight:600">✓ {det["zero_note"]}</span>'
                 if issues == 0 else
                 f'<span style="color:{C_RED};font-weight:600">⚠ 有 {issues} 处需关注</span>')
+    if ig_note:
+        note = (note + " " + ig_note) if note else ig_note
     if show_link:
         link = (f'<a href="{SITE}/{mk}/run/{run_id}" '
                 f'style="font-size:12px;color:#2f54d0;text-decoration:none;font-weight:600">'
@@ -225,6 +304,7 @@ def main() -> None:
     db = IndexDB(DB_PATH)
     try:
         runs = runs_by_date(db, date_arg)
+        runs = adjust_runs_for_ignores(db, runs)   # 已忽略的不计入日报数字
         subs = [email_arg] if email_arg else db.list_active_subscribers()
     finally:
         db.close()

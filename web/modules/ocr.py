@@ -16,6 +16,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+import ignores  # noqa: E402
+
 
 def _ocr_context(db) -> dict:
     """OCR 统计卡片 + 最新英文图含中文列表。"""
@@ -25,6 +27,7 @@ def _ocr_context(db) -> dict:
     ).fetchall()
     checked: set[str] = set()
     has_cn = en_has_cn = errors = 0
+    rules = ignores.active_map(db)
     for item_type, detail_json, item_key in rows:
         if item_key in checked:
             continue
@@ -32,13 +35,15 @@ def _ocr_context(db) -> dict:
         if item_type == "error":
             errors += 1
         elif item_type == "has_cn":
-            has_cn += 1
             try:
                 d = json.loads(detail_json)
+            except Exception:
+                continue
+            d, _ign, _rem = ignores.strip("ocr", d, rules, item_type)   # 按忽略过滤
+            if d.get("has_cn"):
+                has_cn += 1
                 if d.get("lang") == "en":
                     en_has_cn += 1
-            except Exception:
-                pass
 
     # 最新英文含中文图（按 run 倒序 + 去重，取 8 张）——暂不在首页展示，保留计算供后续启用
     en_cn_images: list[dict] = []

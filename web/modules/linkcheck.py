@@ -18,6 +18,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+import ignores  # noqa: E402
+
 CATALOGS = ["best-practices", "harmonyos-guides", "harmonyos-references",
             "harmonyos-faqs", "harmonyos-releases"]
 
@@ -31,19 +33,29 @@ def _item_visible(it: dict) -> bool:
 
 
 def _linkcheck_context(db) -> dict:
-    """最近一次检查的概览（供顶部卡片）。"""
+    """最近一次检查的概览（供顶部卡片）——按当前忽略状态过滤后统计。"""
     row = db._conn.execute(
-        "SELECT summary_json FROM runs WHERE module_key='linkcheck' "
+        "SELECT id, summary_json FROM runs WHERE module_key='linkcheck' "
         "ORDER BY id DESC LIMIT 1").fetchone()
     stats = {"checked": 0, "dead": 0, "vintage": 0, "anchor_miss": 0}
-    if row and row[0]:
+    if row:
+        run_id, sj = row
         try:
-            s = json.loads(row[0])
-            stats = {"checked": s.get("checked", 0), "dead": s.get("dead", 0),
-                     "vintage": s.get("vintage", 0),
-                     "anchor_miss": s.get("anchor_miss", 0)}
+            stats["checked"] = (json.loads(sj or "{}") or {}).get("checked", 0)
         except Exception:
             pass
+        # 逐条按忽略过滤后累加（run 数据不动，恢复即时生效）
+        rules = ignores.active_map(db)
+        for r in db._conn.execute("SELECT detail_json FROM items WHERE run_id=?",
+                                  (run_id,)).fetchall():
+            try:
+                d = json.loads(r[0])
+            except Exception:
+                continue
+            d2, _ign, _rem = ignores.strip("linkcheck", d, rules)
+            stats["dead"] += d2.get("dead_count", 0)
+            stats["vintage"] += d2.get("vintage_count", 0)
+            stats["anchor_miss"] += d2.get("anchor_miss_count", 0)
     return {"linkcheck_stats": stats}
 
 

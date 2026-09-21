@@ -1,5 +1,27 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+/* ── 忽略开关（无弹窗：点一下忽略、再点恢复）────────────────── */
+.ign-cell { white-space: nowrap; width: 1%; vertical-align: top; }
+.ign-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; max-width: 260px; }
+.ign-chip { border: 1px solid var(--border); background: #fff; border-radius: 999px;
+    padding: 2px 10px; font-size: 12px; cursor: pointer; color: #41485c; }
+.ign-chip:hover { border-color: #c9d4ee; background: #f7f9ff; }
+.ign-chip.on { background: #f1f3f8; color: #8a90a0; border-color: #e3e6ee; }
+.ign-all { border: 1px dashed var(--border); background: #fff; border-radius: 6px;
+    padding: 2px 8px; font-size: 12px; cursor: pointer; color: var(--muted); }
+.ign-all:hover { color: var(--deleted); border-color: #f0c2c2; background: #fff8f8; }
+.ign-mini { border: 1px solid var(--border); background: #fff; border-radius: 6px;
+    padding: 1px 8px; font-size: 11.5px; cursor: pointer; color: var(--muted);
+    margin-left: 6px; }
+.ign-mini:hover { border-color: #c9d4ee; color: var(--primary); }
+.ign-mini.on { background: #f1f3f8; color: #8a90a0; border-color: #e3e6ee; }
+.link-item.is-ign { opacity: .5; }
+.badge-ign { background: #f1f3f8; color: #6b7183; }
+.ign-chips form { margin: 0; }
+.link-item form { display: inline; margin: 0; }
+.ign-note { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+</style>
 <a class="back" href="/{{ module.key }}/">← 返回 {{ module.name }}</a>
 <h1>{{ module.icon }} {{ module.name }} · 运行 #{{ run.id if run else '?' }}</h1>
 
@@ -54,6 +76,10 @@
 </form>
 {% endif %}
 
+{% if has_ign and show_mode == 'only' %}
+<p class="ign-note">当前只显示「已忽略」项：取消勾选后点「保存」即可恢复（恢复后立即回到正常列表）。</p>
+{% endif %}
+
 <table>
     <thead>
         <tr>
@@ -61,26 +87,32 @@
             {% for f, label, render in item_columns %}
             <th>{{ label }}</th>
             {% endfor %}
+            {% if has_ign %}<th>忽略</th>{% endif %}
         </tr>
     </thead>
     <tbody>
     {% for it in items %}
         <tr>
             <td>
+                {% set n_ign = it.get('n_ignored', 0) if has_ign else 0 %}
+                {% set ns = namespace(active=false) %}
                 {% if multi_badge %}
-                    {% set ns = namespace(active=false) %}
                     {% for fd, cls, label in multi_badge %}
                         {% if it.detail.get(fd, 0) > 0 %}
                             <span class="badge {{ cls }}">{{ label }}</span>
                             {% set ns.active = true %}
                         {% endif %}
                     {% endfor %}
-                    {% if not ns.active %}
-                        <span class="badge badge-added">正常</span>
-                    {% endif %}
                 {% else %}
                     {% set b = badge_map.get(it.item_type, ('badge-added', it.item_type)) %}
                     <span class="badge {{ b[0] }}">{{ b[1] }}</span>
+                    {% set ns.active = true %}
+                {% endif %}
+                {% if has_ign %}
+                <span class="badge badge-ign" {% if not n_ign %}style="display:none"{% endif %}>已忽略 {{ n_ign }}</span>
+                {% endif %}
+                {% if not ns.active and not n_ign %}
+                <span class="badge badge-added js-normal">正常</span>
                 {% endif %}
             </td>
             {% for f, label, render in item_columns %}
@@ -93,13 +125,29 @@
                         <span class="mono">{{ lv }}</span>
                     {% endif %}
                 {% elif render == 'link_list' %}
-                    {% set links = it.detail.get(f, []) %}
-                    {% if links %}
-                        {% for l in links %}
-                        <div class="link-item">
-                            <a class="issue-link" href="{{ l.url }}" target="_blank">{% if l.status %}[{{ l.status }}] {% endif %}{{ l.text or l.url[:40] }} ↗</a>
+                    {% set lp = (it.link_problems or {}).get(f) if has_ign else none %}
+                    {% if lp %}
+                        {% for e in lp %}
+                        <div class="link-item {{ 'is-ign' if e.p.ignored else '' }}">
+                            <a class="issue-link" href="{{ e.link.url or e.p.target }}" target="_blank">{% if e.link.status %}[{{ e.link.status }}] {% endif %}{{ e.link.text or e.p.label[:40] }} ↗</a>
+                            <form class="ign-f" method="post" action="/{{ module.key }}/ignore">
+                                <input type="hidden" name="run_id" value="{{ run.id if run else '' }}">
+                                <input type="hidden" name="item_id" value="{{ it.id }}">
+                                <button class="ign-mini {{ 'on' if e.p.ignored else '' }}" name="act"
+                                        value="toggle:{{ e.idx }}" data-idx="{{ e.idx }}"
+                                        title="{{ '点击恢复：这条链接重新参与检查' if e.p.ignored else '点击忽略这条链接（所有文档里都不再报）' }}">{{ '已忽略' if e.p.ignored else '忽略' }}</button>
+                            </form>
                         </div>
                         {% endfor %}
+                    {% else %}
+                        {% set links = it.detail.get(f, []) %}
+                        {% if links %}
+                            {% for l in links %}
+                            <div class="link-item">
+                                <a class="issue-link" href="{{ l.url }}" target="_blank">{% if l.status %}[{{ l.status }}] {% endif %}{{ l.text or l.url[:40] }} ↗</a>
+                            </div>
+                            {% endfor %}
+                        {% endif %}
                     {% endif %}
                 {% elif (f == 'url' or f == 'doc_url') and (it.detail.get('url') or it.detail.get('doc_url')) %}
                     <a class="btn-link" href="{{ it.detail.get('url') or it.detail.get('doc_url') }}" target="_blank">查看文档 ↗</a>
@@ -115,10 +163,38 @@
                 {% endif %}
             </td>
             {% endfor %}
+            {% if has_ign %}
+            <td class="ign-cell">
+                {% set n_ign = it.problems|selectattr('ignored')|list|length %}
+                {% set n_all = it.problems|length %}
+                {% if ign_module != 'linkcheck' and n_all %}
+                <div class="ign-chips">
+                    {% for p in it.problems %}{% if not p.inline %}
+                    <form class="ign-f" method="post" action="/{{ module.key }}/ignore">
+                        <input type="hidden" name="run_id" value="{{ run.id if run else '' }}">
+                        <input type="hidden" name="item_id" value="{{ it.id }}">
+                        <button class="ign-chip {{ 'on' if p.ignored else '' }}" name="act"
+                                value="toggle:{{ loop.index0 }}" data-idx="{{ loop.index0 }}"
+                                data-label="{{ p.kind_label }}"
+                                title="{{ '点击恢复该问题' if p.ignored else '点击忽略该问题' }}">{{ p.kind_label }}{% if p.ignored %} · 已忽略{% endif %}</button>
+                    </form>
+                    {% endif %}{% endfor %}
+                </div>
+                {% endif %}
+                {% if n_all > 1 or ign_module == 'linkcheck' %}
+                <form class="ign-f" method="post" action="/{{ module.key }}/ignore">
+                    <input type="hidden" name="run_id" value="{{ run.id if run else '' }}">
+                    <input type="hidden" name="item_id" value="{{ it.id }}">
+                    <button class="ign-all" name="act" value="all"
+                            title="这一行的所有问题一起忽略 / 恢复">{{ '↩ 恢复全部' if n_ign == n_all else '🚫 全部忽略' }}</button>
+                </form>
+                {% endif %}
+            </td>
+            {% endif %}
         </tr>
     {% endfor %}
     {% if not items %}
-        <tr><td colspan="{{ 1 + module.item_columns|length }}" class="empty">暂无明细</td></tr>
+        <tr><td colspan="{{ 1 + (1 if has_ign else 0) + item_columns|length }}" class="empty">暂无明细</td></tr>
     {% endif %}
     </tbody>
 </table>
@@ -128,5 +204,79 @@
     <span class="pg-info">第 {{ page }} / {{ total_pages }} 页 · 共 {{ total }} 条</span>
     {% if page < total_pages %}<a class="pg-btn" href="/{{ module.key }}/run/{{ run.id }}?{{ (base_qs ~ ('&' if base_qs else '') ~ 'page=' ~ (page+1))|safe }}">下一页 →</a>{% endif %}
 </div>
+{% endif %}
+{% if has_ign %}
+<script>
+/* 忽略开关：原地更新，不整页刷新（滚动位置不动）。失败时退回整页刷新。 */
+(function () {
+  var MODE = {{ show_mode|tojson }};
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form.classList || !form.classList.contains('ign-f')) return;
+    e.preventDefault();
+    var btn = form.querySelector('button[name="act"]');
+    var fd = new FormData(form);
+    /* 关键：FormData(form) 不含提交按钮本身，必须手动补上 act */
+    if (btn) fd.append(btn.name, btn.value);
+    fetch(form.action, {method: 'POST', body: fd, credentials: 'same-origin',
+                        headers: {'X-Requested-With': 'fetch'}})
+      .then(function (r) {
+        if (r.ok) return r.json().then(function (j) { applyUpdate(form.closest('tr'), j); });
+        if (r.status >= 400 && r.status < 500) {   /* 请求本身有问题：提示，不要跳转 */
+          alert('操作失败（HTTP ' + r.status + '），请刷新页面后重试');
+          return;
+        }
+        throw new Error(r.status);
+      })
+      .catch(function () {
+        /* 退路：整页提交（补一个隐藏的 act，因为 form.submit() 也不带按钮） */
+        if (btn && !form.querySelector('input[name="act"]')) {
+          var h = document.createElement('input');
+          h.type = 'hidden'; h.name = 'act'; h.value = btn.value;
+          form.appendChild(h);
+        }
+        form.submit();
+      });
+  });
+
+  function applyUpdate(tr, j) {
+    if (!tr || !j || !j.problems) return;
+    var nAll = j.problems.length, nIgn = j.n_ignored;
+    tr.querySelectorAll('button[data-idx]').forEach(function (b) {
+      var st = j.problems[+b.dataset.idx];
+      if (!st) return;
+      b.classList.toggle('on', !!st.ignored);
+      if (b.classList.contains('ign-mini')) {
+        b.textContent = st.ignored ? '已忽略' : '忽略';
+        var li = b.closest('.link-item');
+        if (li) li.classList.toggle('is-ign', !!st.ignored);
+      } else {
+        b.textContent = st.ignored ? (b.dataset.label + ' · 已忽略') : b.dataset.label;
+      }
+    });
+    var all = tr.querySelector('.ign-all');
+    if (all) all.textContent = (nAll > 0 && nIgn === nAll) ? '↩ 恢复全部' : '🚫 全部忽略';
+    var badge = tr.querySelector('.badge-ign');
+    if (badge) { badge.textContent = '已忽略 ' + nIgn; badge.style.display = nIgn ? '' : 'none'; }
+    var normal = tr.querySelector('.js-normal');
+    if (normal) normal.style.display = nIgn ? 'none' : '';
+    /* 该行是否应从当前视图消失：默认模式=已无剩余问题；仅已忽略模式=已无忽略项 */
+    var hide = (MODE === 'default' && j.n_rem === 0) || (MODE === 'only' && nIgn === 0);
+    if (hide) {
+      tr.style.transition = 'opacity .18s';
+      tr.style.opacity = '0';
+      setTimeout(function () {
+        tr.remove();
+        /* 行被移除 → 当前页签的数量减 1（与页签栏保持一致） */
+        var tn = document.querySelector('.tab.active .tab-n');
+        if (tn) {
+          var n = (parseInt((tn.textContent || '').replace(/[^\d]/g, ''), 10) || 0) - 1;
+          tn.textContent = (n > 0 ? n : 0).toLocaleString('en-US');
+        }
+      }, 180);
+    }
+  }
+})();
+</script>
 {% endif %}
 {% endblock %}

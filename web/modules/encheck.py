@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 
+import ignores
+
 
 def _encheck_context(db) -> dict:
     """按文档去重（取最新一次结果）统计各项问题数，供顶部概览卡片展示。"""
@@ -34,6 +36,7 @@ def _encheck_context(db) -> dict:
 
     stats = {"checked": checked_total, "hanzi": 0, "punct": 0, "url_cn": 0,
              "cn_link": 0, "clean": 0, "errors": 0}
+    rules = ignores.active_map(db)
     for item_type, detail_json in latest.values():
         if item_type == "error":
             stats["errors"] += 1
@@ -42,6 +45,7 @@ def _encheck_context(db) -> dict:
             d = json.loads(detail_json)
         except Exception:
             continue
+        d, _ign, _rem = ignores.strip("encheck", d, rules)   # 按忽略过滤后统计
         hit = False
         if d.get("hanzi_count", 0) > 0:
             stats["hanzi"] += 1
@@ -63,7 +67,7 @@ def _encheck_context(db) -> dict:
 ENCHECK_MODULE = {
     "key": "encheck",
     "name": "英文文档检查",
-    "nav_name": "英文文档",        # 顶栏菜单用短名
+    "nav_name": "英文文档检查",    # 顶栏菜单名（用户 2026-09 定）
     "icon": "🌐",
     "description": "检查英文文档中的中文字符与中文跳转链接",
     "runs_title": "英文文档检查记录",

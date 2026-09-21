@@ -39,6 +39,12 @@ from linkcheck.link_check import (  # noqa: E402
 from encheck.en_check import check_md  # noqa: E402
 from imgnorm.rules import FIELD, RULES, analyze  # noqa: E402
 
+import ignores  # noqa: E402
+
+# verdict 的 ptype / 计数字段 → 忽略 kind
+LINK_KIND = {"真死链": "dead", "误链历史版本": "vintage", "锚点失效": "anchor_miss"}
+EN_KIND = {"hanzi_count": "hanzi", "punct_count": "punct",
+           "url_cn_char_count": "url_cn", "cn_link_count": "cn_link"}
 DATA_DIR = BASE_DIR / "data"
 
 # 复核范围：imgnorm（图片内容规范）暂不参与（用户要求），代码保留在 ALL_MODULES 里备启用
@@ -150,8 +156,8 @@ def _verdict(module, ptype, target, status, evidence, **kw):
     return v
 
 
-def verdicts_linkcheck(db, tg, urls_ref, args, meta) -> list:
-    """逐条复核历史链接问题：锚点/历史版本本地判、真死链才发请求。"""
+def verdicts_linkcheck(db, tg, urls_ref, args, meta, rules) -> list:
+    """逐条复核历史链接问题：锚点/历史版本本地判、真死链才发请求。已忽略的直接跳过。"""
     out, dead_todo = [], []
     doc_cache: dict[str, str | None] = {}
     url_key = {}   # cache_key -> doc_key（本地文档 URL 映射）
@@ -198,6 +204,11 @@ def verdicts_linkcheck(db, tg, urls_ref, args, meta) -> list:
     for (dk, url, ptype, text) in tg["linkcheck"].values():
         rec = _verdict("linkcheck", ptype, url, None, "",
                        doc_key=dk, text=text)
+        if ignores.is_ignored(rules, "linkcheck", url, LINK_KIND.get(ptype, ""), dk):
+            # 已忽略：不参与复核、不计入解决率，也不再发请求
+            rec.update(status="ignored", evidence="已忽略")
+            out.append(rec)
+            continue
         if _cache_key(url) not in urls_ref and not url.startswith("#"):
             rec.update(status="gone", evidence="链接已不再被任何文档引用")
             out.append(rec)
@@ -263,8 +274,8 @@ def verdicts_linkcheck(db, tg, urls_ref, args, meta) -> list:
     return out
 
 
-def verdicts_encheck(db, tg, meta, args) -> list:
-    """逐篇复核英文文档：文档没了→gone；仍有中文→still，否则→resolved。"""
+def verdicts_encheck(db, tg, meta, args, rules) -> list:
+    """逐篇复核英文文档：文档没了→gone；仍有中文→still，否则→resolved。已忽略的问题类型不计入。"""
     out = []
     fresh: dict[str, tuple] = {}
     for dk in sorted(tg["encheck"]):
@@ -290,11 +301,28 @@ def verdicts_encheck(db, tg, meta, args) -> list:
         counts = {"hanzi_count": res[1], "punct_count": res[3],
                   "url_cn_char_count": res[5], "cn_link_count": res[8]}
         fresh[dk] = res
-        if any(counts.values()):
-            labels = [lab for k, lab in (("hanzi_count", "含汉字"), ("punct_count", "含标点"),
-                                         ("url_cn_char_count", "链接URL含中文"),
-                                         ("cn_link_count", "含中文链接")) if counts[k] > 0]
-            rec.update(status="still", evidence="仍存在：" + "、".join(labels), extra={"check": res})
+        pairs = (("hanzi_count", "含汉字"), ("punct_count", "含标点"),
+                 ("url_cn_char_count", "链接URL含中文"), ("cn_link_count", "含中文链接"))
+        hit = [k for k, _l in pairs if counts[k] > 0]
+
+        def _kind_ignored(k):
+            """该类型是否已被忽略：中文链接逐条看（全部链接都被忽略才算），其余按文档。"""
+            kind = EN_KIND[k]
+            if k == "cn_link_count":
+                urls = [l.get("url") for l in (res[7] or []) if isinstance(l, dict) and l.get("url")]
+                return bool(urls) and all(
+                    ignores.is_ignored(rules, "encheck", u, kind) for u in urls if u)
+            return ignores.is_ignored(rules, "encheck", dk, kind)
+
+        active = [k for k in hit if not _kind_ignored(k)]
+        ign = [k for k in hit if _kind_ignored(k)]
+        if active:
+            labels = [lab for k, lab in pairs if k in active]
+            rec.update(status="still", evidence="仍存在：" + "、".join(labels),
+                       extra={"check": res})
+        elif ign:
+            rec.update(status="ignored",
+                       evidence="已忽略：" + "、".join(lab for k, lab in pairs if k in ign))
         else:
             rec.update(status="resolved", evidence="文档已无中文问题")
         out.append(rec)
@@ -314,8 +342,8 @@ def _ocr_worker(batch):
     return res
 
 
-def verdicts_ocr(db, tg, imgs_ref, img_doc, meta, args) -> list:
-    """逐张复核"英文文档含中文图"：图没了→gone；仍含中文→still，否则→resolved。
+def verdicts_ocr(db, tg, imgs_ref, img_doc, meta, args, rules) -> list:
+    """逐张复核"英文文档含中文图"：图没了→gone；仍含中文→still，否则→resolved。已忽略的跳过（也不重跑 OCR）。
 
     大多数图片自上次 OCR 后并未改动，直接复用已存识别结果（秒级）；只有文件被更新过
     的图才真正重跑 OCR（否则会白跑上千张、把 CPU 跑满还拖垮 Web）。
@@ -345,6 +373,10 @@ def verdicts_ocr(db, tg, imgs_ref, img_doc, meta, args) -> list:
         catalog = parts[2] if len(parts) > 3 else ""
         rec = _verdict("ocr", "图片中文", img, None, "", image=img, lang=lang,
                        catalog=catalog, doc_key=img_doc.get(img, ""))
+        if ignores.is_ignored(rules, "ocr", img, "has_cn"):
+            rec.update(status="ignored", evidence="已忽略")
+            out.append(rec)
+            continue
         p = BASE_DIR / img
         if not p.exists():
             rec.update(status="gone", evidence="图片文件已删除")
@@ -395,8 +427,8 @@ def verdicts_ocr(db, tg, imgs_ref, img_doc, meta, args) -> list:
     return out
 
 
-def verdicts_imgnorm(db, tg, imgs_ref, args) -> list:
-    """（暂不参与复核）图片内容规范：用已存 OCR 文本跑规则。"""
+def verdicts_imgnorm(db, tg, imgs_ref, args, rules) -> list:
+    """（暂不参与复核）图片内容规范：用已存 OCR 文本跑规则。已忽略的规则类型不计入。"""
     out = []
     ocr_text: dict[str, tuple] = {}
     for item_key, dj in db._conn.execute(
@@ -421,9 +453,19 @@ def verdicts_imgnorm(db, tg, imgs_ref, args) -> list:
             continue
         text, lang, conf = ocr_text.get(img, ("", "", 0))
         hits, _ev, _x = analyze(text, lang, conf)
-        if hits:
-            labels = [r["label"] for r in RULES if FIELD[r["id"]] in hits]
+
+        def _ig(field: str) -> bool:
+            kind = field[2:] if field.startswith("n_") else field
+            return ignores.is_ignored(rules, "imgnorm", img, kind)
+
+        active = {f: n for f, n in hits.items() if not _ig(f)}
+        ign = {f: n for f, n in hits.items() if _ig(f)}
+        if active:
+            labels = [r["label"] for r in RULES if FIELD[r["id"]] in active]
             rec.update(status="still", evidence="、".join(labels)[:80] or "仍有规范问题")
+        elif ign:
+            labels = [r["label"] for r in RULES if FIELD[r["id"]] in ign]
+            rec.update(status="ignored", evidence="已忽略：" + "、".join(labels)[:80])
         else:
             rec.update(status="resolved", evidence="已无规范问题")
         out.append(rec)
@@ -536,28 +578,36 @@ def main():
                 items = list(tg[k].items())[:args.limit] if isinstance(tg[k], dict) else list(tg[k])[:args.limit]
                 tg[k] = dict(items) if isinstance(tg[k], dict) else set(items)
 
+    rules = db.active_ignore_map()
+    n_rules = sum(len(v) for v in rules.values())
+    if n_rules:
+        print(f"🚫 生效中的忽略 {n_rules} 条（不再复核、不计入解决率）", flush=True)
+
     verdicts: list = []
     if "linkcheck" in sel and tg["linkcheck"]:
         print(f"🔗 复核链接 {len(tg['linkcheck'])} 项…", flush=True)
-        verdicts += verdicts_linkcheck(db, tg, urls_ref, args, meta)
+        verdicts += verdicts_linkcheck(db, tg, urls_ref, args, meta, rules)
     if "encheck" in sel and tg["encheck"]:
         print(f"🌐 复核英文文档 {len(tg['encheck'])} 篇…", flush=True)
-        verdicts += verdicts_encheck(db, tg, meta, args)
+        verdicts += verdicts_encheck(db, tg, meta, args, rules)
     if "ocr" in sel and tg["ocr"]:
         print(f"🔍 复核图片中文 {len(tg['ocr'])} 张…", flush=True)
-        verdicts += verdicts_ocr(db, tg, imgs_ref, img_doc, meta, args)
+        verdicts += verdicts_ocr(db, tg, imgs_ref, img_doc, meta, args, rules)
     if "imgnorm" in sel and tg["imgnorm"]:
         print(f"🖼️ 复核图片规范 {len(tg['imgnorm'])} 张…", flush=True)
-        verdicts += verdicts_imgnorm(db, tg, imgs_ref, args)
+        verdicts += verdicts_imgnorm(db, tg, imgs_ref, args, rules)
 
     total = len(verdicts)
     resolved = sum(1 for v in verdicts if v["status"] == "resolved")
     still = sum(1 for v in verdicts if v["status"] == "still")
     gone = sum(1 for v in verdicts if v["status"] == "gone")
-    rate = round(resolved * 100 / total, 1) if total else 0.0
+    ignored = sum(1 for v in verdicts if v["status"] == "ignored")
+    denom = total - ignored      # 已忽略不计入解决率分母（用户口径）
+    rate = round(resolved * 100 / denom, 1) if denom else 0.0
 
     items = build_items(verdicts, meta)
-    by_mod: dict[str, dict] = defaultdict(lambda: {"resolved": 0, "still": 0, "gone": 0})
+    by_mod: dict[str, dict] = defaultdict(
+        lambda: {"resolved": 0, "still": 0, "gone": 0, "ignored": 0})
     item_by_mod: dict[str, int] = defaultdict(int)
     for v in verdicts:
         if v["status"]:
@@ -566,21 +616,23 @@ def main():
         item_by_mod[d["module"]] += 1
 
     summary = {"total": total, "resolved": resolved, "still": still, "gone": gone,
-               "rate": rate, "elapsed_sec": round(time.time() - t0),
-               "item_count": len(items)}
+               "ignored": ignored, "rate": rate,
+               "elapsed_sec": round(time.time() - t0), "item_count": len(items)}
     for mk in sel:
         summary[f"{mk}_total"] = sum(by_mod[mk].values())
         summary[f"{mk}_resolved"] = by_mod[mk]["resolved"]
         summary[f"{mk}_still"] = by_mod[mk]["still"]
         summary[f"{mk}_gone"] = by_mod[mk]["gone"]
+        summary[f"{mk}_ignored"] = by_mod[mk]["ignored"]
         summary[f"{mk}_items"] = item_by_mod[mk]
 
     print(f"\n📊 复核 {total} 项 | ✅已解决 {resolved} | ⚠️仍存在 {still} | ➖已失效 {gone} "
-          f"| 解决率 {rate}%  ({summary['elapsed_sec']}s)", flush=True)
+          f"| 🚫已忽略 {ignored} | 解决率 {rate}%  ({summary['elapsed_sec']}s)", flush=True)
     for mk in sel:
         c = by_mod[mk]
         print(f"   {MODULE_LABEL[mk]:14s} {sum(c.values()):6d}  ✅{c['resolved']:5d} "
-              f"⚠️{c['still']:5d} ➖{c['gone']:4d}   （明细保留 {item_by_mod[mk]} 项）", flush=True)
+              f"⚠️{c['still']:5d} ➖{c['gone']:4d} 🚫{c['ignored']:4d} "
+              f"  （明细保留 {item_by_mod[mk]} 项）", flush=True)
 
     if args.dry_run:
         db.close()

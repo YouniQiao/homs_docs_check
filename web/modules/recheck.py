@@ -44,7 +44,7 @@ def _recheck_context(db) -> dict:
     row = db._conn.execute(
         "SELECT id, summary_json FROM runs WHERE module_key='recheck' "
         "AND status='success' ORDER BY id DESC LIMIT 1").fetchone()
-    stats = {"total": 0, "resolved": 0, "still": 0, "gone": 0, "rate": 0.0}
+    stats = {"total": 0, "resolved": 0, "still": 0, "gone": 0, "ignored": 0, "rate": 0.0}
     per_module: list[dict] = []
     latest_run_id = None
     if not row:
@@ -56,7 +56,7 @@ def _recheck_context(db) -> dict:
         s = json.loads(sj or "{}")
         stats = {"total": s.get("total", 0), "resolved": s.get("resolved", 0),
                  "still": s.get("still", 0), "gone": s.get("gone", 0),
-                 "rate": s.get("rate", 0.0)}
+                 "ignored": s.get("ignored", 0), "rate": s.get("rate", 0.0)}
     except Exception:
         pass
 
@@ -77,12 +77,14 @@ def _recheck_context(db) -> dict:
         r = int(sval.get(f"{mk}_resolved", 0))
         st = int(sval.get(f"{mk}_still", 0))
         gn = int(sval.get(f"{mk}_gone", 0))
+        ig = int(sval.get(f"{mk}_ignored", 0))
+        denom = (n - ig) or 1      # 已忽略不计入解决率分母（用户口径）
         per_module.append({
             "key": mk, "label": MODULE_LABEL.get(mk, mk),
-            "total": n, "resolved": r, "still": st, "gone": gn,
-            "rate": round(r * 100 / n, 1),
-            "p_resolved": round(r * 100 / n, 1),
-            "p_still": round(st * 100 / n, 1),
+            "total": n, "resolved": r, "still": st, "gone": gn, "ignored": ig,
+            "rate": round(r * 100 / denom, 1),
+            "p_resolved": round(r * 100 / denom, 1),
+            "p_still": round(st * 100 / denom, 1),
             "issue_count": agg.get(mk, {}).get("item_count", 0),
         })
     per_module.sort(key=lambda x: x["total"], reverse=True)
@@ -102,7 +104,8 @@ RECHECK_MODULE = {
     "name": "问题复核",
     "nav_name": "复核",            # 顶栏菜单用短名
     "icon": "🗓️",
-    "debug": True,
+    "debug": False,            # 不再打「调试中」（用户 2026-09）；imgnorm 仍打
+    "in_nav": False,             # 不进顶栏菜单（用户 2026-09 要求）；仍保留在首页「结果复核」组里
     "description": "复核历史发现的问题：已解决 / 仍存在 / 已失效（明细只列仍存在的问题）",
     "runs_title": "问题复核记录",
     "per_page": 30,
@@ -112,7 +115,8 @@ RECHECK_MODULE = {
     "summary_fields": [("total", "复核项"), ("resolved", "已解决"), ("still", "仍存在"),
                        ("gone", "已失效"), ("rate", "解决率(%)")],
     "detail_summary_fields": [("total", "复核项"), ("resolved", "已解决"),
-                              ("still", "仍存在"), ("gone", "已失效"), ("rate", "解决率(%)")],
+                              ("still", "仍存在"), ("gone", "已失效"),
+                              ("rate", "解决率(%)")],
     "filters": [],
     "badge_map": {},
     "context_provider": _recheck_context,

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.ig-head { display: flex; align-items: baseline; gap: 12px; }
+.ig-head .ig-sum { margin-left: auto; font-size: 13px; color: var(--muted); }
+.ig-img { max-width: 132px; max-height: 84px; border-radius: 6px; border: 1px solid var(--border); display: block; }
+.ig-target { word-break: break-all; max-width: 420px; display: inline-block; font-size: 12.5px; }
+.ig-reason { color: var(--muted); font-size: 12.5px; }
+.ig-btn { background: #fff; border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 12px; font-size: 12.5px; cursor: pointer; color: var(--primary);
+    font-weight: 600; }
+.ig-btn:hover { border-color: #c9d4ee; background: #f7f9ff; }
+</style>
+
+<div class="ig-head">
+    <h1>🚫 已忽略问题</h1>
+    <span class="ig-sum">当前生效 <b>{{ "{:,}".format(total) }}</b> 项</span>
+</div>
+<p class="subtitle">这里集中列出被忽略的检测结果，点「恢复」即重新出现在对应模块的列表里（即时生效）。</p>
+
+<div class="tabs">
+    {% for k, label in tabs %}
+    <a class="tab {{ 'active' if k == tab else '' }}" href="?tab={{ k }}">
+        {{ label }}<span class="tab-n">{{ "{:,}".format(total if k == 'all' else counts.get(k, 0)) }}</span>
+    </a>
+    {% endfor %}
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>模块</th>
+            <th>目标</th>
+            <th>问题类型</th>
+            {% if has_reason %}<th>忽略原因</th>{% endif %}
+            <th>忽略时间</th>
+            <th>来源 IP</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+        <tr>
+            <td><span class="badge badge-added">{{ r.module_label }}</span></td>
+            <td>
+                {% if r.image %}
+                <a href="/media/{{ r.image_rel }}" target="_blank"><img class="ig-img" src="/media/{{ r.image_rel }}" alt="图片" loading="lazy"></a>
+                {% endif %}
+                {% if r.url %}
+                <a class="issue-link" href="{{ r.url }}" target="_blank" rel="noopener">{{ (r.title or r.url)[:90] }} ↗</a>
+                {% elif r.image %}
+                <span class="mono ig-target">{{ r.image }}</span>
+                {% else %}
+                <span class="mono ig-target">{{ r.target }}</span>
+                {% endif %}
+            </td>
+            <td><span class="badge badge-modified">{{ r.kind_label }}</span></td>
+            {% if has_reason %}<td class="ig-reason">{{ r.reason or '—' }}</td>{% endif %}
+            <td class="mono" style="font-size:12.5px">{{ r.created_at }}</td>
+            <td class="mono" style="font-size:12px">{{ r.created_ip or '—' }}</td>
+            <td>
+                <form method="post" action="/ignored/restore">
+                    <input type="hidden" name="id" value="{{ r.id }}">
+                    <button type="submit" class="ig-btn">↩ 恢复</button>
+                </form>
+            </td>
+        </tr>
+    {% endfor %}
+    {% if not rows %}
+        <tr><td colspan="{{ 7 if has_reason else 6 }}" class="empty">当前没有忽略项</td></tr>
+    {% endif %}
+    </tbody>
+</table>
+{% endblock %}

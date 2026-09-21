@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import json
 
+import ignores
+
 from imgnorm.rules import BADGE_CLS, FIELD, LABEL, RULES
 
 
 def _imgnorm_context(db) -> dict:
-    """按图片去重（取最新一次结果）统计各规则命中数 + 覆盖图片数。"""
+    """按图片去重（取最新一次结果）统计各规则命中数（按当前忽略过滤）+ 覆盖图片数。"""
     rows = db._conn.execute(
         "SELECT i.item_key, i.detail_json FROM items i "
         "JOIN runs r ON i.run_id = r.id WHERE r.module_key='imgnorm' "
@@ -26,17 +28,27 @@ def _imgnorm_context(db) -> dict:
     for item_key, detail_json in rows:
         latest[item_key] = detail_json        # 后写覆盖 → 保留最新
 
-    stats = {"issues": len(latest)}
+    rules = ignores.active_map(db)
+    stats = {"issues": 0}
     for r in RULES:
         stats[FIELD[r["id"]]] = 0
+    sensitive = 0
     for detail_json in latest.values():
         try:
             d = json.loads(detail_json)
         except Exception:
             continue
+        d, _ign, _rem = ignores.strip("imgnorm", d, rules)   # 按忽略过滤
+        hit = False
         for r in RULES:
             if d.get(FIELD[r["id"]], 0) > 0:
                 stats[FIELD[r["id"]]] += 1
+                hit = True
+        if hit:
+            stats["issues"] += 1
+        if any(d.get(FIELD[x], 0) > 0 for x in ("secret", "ip", "phone", "email")):
+            sensitive += 1
+    stats["n_sensitive"] = sensitive
 
     # 覆盖图片数 = OCR 已检查的图片数（规范检查基于同一批图）
     try:
@@ -47,10 +59,7 @@ def _imgnorm_context(db) -> dict:
     except Exception:
         stats["checked"] = 0
 
-    # 敏感信息合计（密钥/IP/手机号/邮箱任一命中）
-    stats["n_sensitive"] = sum(1 for dj in latest.values()
-                               if any(json.loads(dj).get(FIELD[x], 0) > 0
-                                      for x in ("secret", "ip", "phone", "email")))
+    # 敏感信息合计已在上面按忽略过滤后统计（stats["n_sensitive"]）
 
     return {"imgnorm_stats": stats}
 
@@ -58,7 +67,7 @@ def _imgnorm_context(db) -> dict:
 IMGNORM_MODULE = {
     "key": "imgnorm",
     "name": "图片内容规范检查",
-    "nav_name": "图片规范",        # 顶栏菜单用短名
+    "nav_name": "图片内容规范检查",  # 顶栏菜单名（用户 2026-09 定）
     "icon": "🖼️",
     "debug": True,   # 调试中：导航/标题/首页卡片显示「调试中」标签
     "description": "基于已识别的图片文字，检查术语规范、敏感信息、占位残留等问题",
