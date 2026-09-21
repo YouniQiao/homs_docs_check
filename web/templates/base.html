@@ -148,7 +148,7 @@
         <a href="/" class="{{ 'active' if request.path == '/' else '' }}">🏠 首页</a>
         {% for m in nav_modules %}
         <a href="/{{ m.key }}/" class="{{ 'active' if module and module.key == m.key else '' }}">
-            {{ m.icon }} {{ m.name }}{% if m.debug %}<span class="nav-tag">调试中</span>{% endif %}
+            {{ m.icon }} {{ m.nav_name or m.name }}
         </a>
         {% endfor %}
         <a class="right {{ 'active' if request.path.startswith('/subscribe') else '' }}" href="/subscribe">📬 邮件订阅</a>

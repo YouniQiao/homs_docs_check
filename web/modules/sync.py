@@ -96,6 +96,7 @@ SYNC_FILTERS = [
 SYNC_MODULE = {
     "key": "sync",
     "name": "文档同步",
+    "nav_name": "同步",            # 顶栏菜单用短名（首页/标题仍用全名）
     "icon": "📚",
     "description": "鸿蒙开发者文档每日增量同步（根据页面displayUpdateTime判断是否变更）",
     "runs_title": "同步任务记录",

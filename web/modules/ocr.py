@@ -70,6 +70,7 @@ def _ocr_context(db) -> dict:
 OCR_MODULE = {
     "key": "ocr",
     "name": "图片 OCR 检查",
+    "nav_name": "图片 OCR",        # 顶栏菜单用短名
     "icon": "🔍",
     "description": "检测文档图片中的中文（PaddleOCR），全量 + 每日增量",
     "runs_title": "图片OCR检查记录",

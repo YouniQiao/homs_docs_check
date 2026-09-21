@@ -100,6 +100,7 @@ def _safe(sj) -> dict:
 RECHECK_MODULE = {
     "key": "recheck",
     "name": "问题复核",
+    "nav_name": "复核",            # 顶栏菜单用短名
     "icon": "🗓️",
     "debug": True,
     "description": "复核历史发现的问题：已解决 / 仍存在 / 已失效（明细只列仍存在的问题）",

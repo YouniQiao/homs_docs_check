@@ -50,6 +50,7 @@ def _linkcheck_context(db) -> dict:
 LINKCHECK_MODULE = {
     "key": "linkcheck",
     "name": "链接健康检查",
+    "nav_name": "链接检查",        # 顶栏菜单用短名
     "icon": "🔗",
     "description": "链接健康检查：真死链 / 误链历史版本 / 锚点失效（真实 HTTP + 缓存 TTL）",
     "runs_title": "链接检查记录",

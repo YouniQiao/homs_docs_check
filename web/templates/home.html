@@ -5,6 +5,11 @@
      justify-content: center; background: var(--primary-soft); border-radius: 14px;
      font-size: 26px; margin-bottom: 16px; }
 .home-cards .name { font-size: 16px; }
+.home-group { margin-bottom: 30px; }
+.home-group > h2 { font-size: 15px; font-weight: 600; color: #41485c;
+     display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.home-group > h2::before { content: ""; width: 3px; height: 15px;
+     border-radius: 2px; background: var(--primary); }
 .sched-card { background: var(--card); border: 1px solid var(--border);
      border-radius: var(--radius); box-shadow: var(--shadow);
      overflow: hidden; }
@@ -15,15 +20,22 @@
 <h1>OpenHarmony 文档检查</h1>
 <p class="subtitle">文档同步、OCR 图片检查、英文文档检查等定时任务的结果统一展示</p>
 
-<div class="cards home-cards">
-    {% for m in nav_modules %}
-    <a class="card" href="/{{ m.key }}/">
-        <div class="icon">{{ m.icon }}</div>
-        <div class="name">{{ m.name }}{% if m.debug %} <span class="badge badge-modified">调试中</span>{% endif %}</div>
-        <div class="desc">{{ m.description }}</div>
-    </a>
-    {% endfor %}
+{% macro modcard(m) %}
+<a class="card" href="/{{ m.key }}/">
+    <div class="icon">{{ m.icon }}</div>
+    <div class="name">{{ m.name }}{% if m.debug %} <span class="badge badge-modified">调试中</span>{% endif %}</div>
+    <div class="desc">{{ m.description }}</div>
+</a>
+{% endmacro %}
+
+{% for gname, mods in home_groups %}
+<div class="home-group">
+    <h2>{{ gname }}</h2>
+    <div class="cards home-cards">
+        {% for m in mods %}{{ modcard(m) }}{% endfor %}
+    </div>
 </div>
+{% endfor %}
 
 <div class="sched">
     <h2>⏰ 每日定时任务</h2>

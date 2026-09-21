@@ -16,7 +16,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from framework import register_module  # noqa: E402
-from modules import MODULES  # noqa: E402
+from modules import MODULES, home_groups, nav_modules  # noqa: E402
 from feedback import register_feedback  # noqa: E402
 from subscribe import register_subscribe  # noqa: E402
 from a2a_view import register_a2a  # noqa: E402
@@ -29,7 +29,7 @@ def create_app() -> Flask:
 
     @app.context_processor
     def inject_nav():
-        return {"nav_modules": MODULES}
+        return {"nav_modules": nav_modules(), "home_groups": home_groups()}
 
     @app.route("/media/<path:filepath>")
     def media(filepath: str):

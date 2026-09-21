@@ -63,6 +63,7 @@ def _encheck_context(db) -> dict:
 ENCHECK_MODULE = {
     "key": "encheck",
     "name": "英文文档检查",
+    "nav_name": "英文文档",        # 顶栏菜单用短名
     "icon": "🌐",
     "description": "检查英文文档中的中文字符与中文跳转链接",
     "runs_title": "英文文档检查记录",

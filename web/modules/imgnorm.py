@@ -58,6 +58,7 @@ def _imgnorm_context(db) -> dict:
 IMGNORM_MODULE = {
     "key": "imgnorm",
     "name": "图片内容规范检查",
+    "nav_name": "图片规范",        # 顶栏菜单用短名
     "icon": "🖼️",
     "debug": True,   # 调试中：导航/标题/首页卡片显示「调试中」标签
     "description": "基于已识别的图片文字，检查术语规范、敏感信息、占位残留等问题",
