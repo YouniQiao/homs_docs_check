@@ -171,7 +171,9 @@ def build_html(runs: list[tuple], on_dt: datetime | None = None,
                links: bool = True) -> str:
     today = (on_dt or datetime.now()).strftime("%Y-%m-%d")
     runs = sorted(runs, key=lambda r: ORDER.index(r[0]) if r[0] in ORDER else len(ORDER))
-    issues = sum(_issue_count(mk, s) for mk, _ts, _st, s, _rid in runs)
+    # 顶部"今日发现 N 处需关注"只统计"问题型"模块；文档同步(changes)是变更提示，不计入
+    issues = sum(_issue_count(mk, s) for mk, _ts, _st, s, _rid in runs
+                 if MODE.get(mk) != "changes")
     overview = (f'<span style="color:{C_GREEN};font-size:15px;font-weight:700;">'
                 f'✅ 今日检查全部正常</span>'
                 if issues == 0 else

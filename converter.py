@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 
 import requests
-from markitdown import MarkItDown
+from markitdown import MarkItDown, StreamInfo
 
 IMG_RE = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
 MD_IMG_RE = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
@@ -89,7 +89,13 @@ def convert_and_localize(html: str, images_dir: Path,
             srcs.append(s)
 
     # 2. markitdown 转换
-    result = _md.convert_stream(io.BytesIO(html.encode("utf-8")), file_extension=".html")
+    #    ⚠️ 必须显式声明 charset="utf-8"：否则 markitdown 会对前 4KB 跑
+    #    charset_normalizer 猜编码，个别文档被猜成 ptcp154/cp1251 → 整篇中文乱码
+    #    （实测全库 67 篇中招，锚点复核因此误报）。
+    result = _md.convert_stream(
+        io.BytesIO(html.encode("utf-8")),
+        stream_info=StreamInfo(mimetype="text/html", extension=".html", charset="utf-8"),
+    )
     text = result.text_content
 
     # 3. 串行下载图片（复用 session 连接池；跨文档去重）

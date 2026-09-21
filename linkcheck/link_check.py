@@ -151,18 +151,21 @@ AUTO_ID_RE = re.compile(
 
 
 def _is_auto_id(raw_anchor: str) -> bool:
-    """无法在本地验证的锚点（站点自动生成 id / 乱码）。
+    """无法在本地验证的锚点（站点自动生成 id / 乱码）。命中即"视为有效"。
 
     - 纯数字、section\\d+ / table\\d+ / li\\d+ / p\\d+ / ch\\d+ 等自动 id
-    - zh-cn_topic_* 主题 id
+    - 旧版主题 id：zh-cn_topic_* / en-us_topic_*
+    - 旧版列表/段落自动 id：*_li<数字> / *_p<数字> / *_table<数字> …（如 en-us_topic_..._li1420045031813）
     - 含西里尔等非中英文字符（源文档 GBK→UTF-8 乱码，无法比对）
     """
     a = raw_anchor.strip()
     if re.fullmatch(r"\d+", a):
         return True
-    if re.match(r"^zh-cn_topic_", a):     # 如 zh-cn_topic_0000001792256137_overrides
+    if re.match(r"^(?:zh-cn|en-us)_topic_", a, re.I):   # 旧版主题 id（zh-cn_/en-us_，大小写不敏感）
         return True
-    if re.search(r"[\u0400-\u04ff]", a):  # 乱码锚点
+    if re.search(r"_(?:li|p|table|ch|image|img|div|span|tr|td|figure|fig|h)\d{3,}$", a, re.I):
+        return True                                # 旧版列表/段落自动 id
+    if re.search(r"[\u0400-\u04ff]", a):           # 乱码锚点
         return True
     return bool(AUTO_ID_RE.fullmatch(a))
 
@@ -276,9 +279,32 @@ def main() -> None:
         (u or "").rstrip("/"): k
         for (k, u) in db._conn.execute("SELECT doc_key, url FROM docs") if u
     }
-    doc_anchors: dict[str, set[str]] = {
-        key: _doc_anchors(content) for key, _lg, _ct, content in docs
-    }
+    # 锚点集：优先用同步时存的「源 HTML id」（= 站点真实锚点，权威依据）；
+    # 没有（老数据/未采到）则退回本地 md 标题反推。按目标文档惰性查询 + 缓存。
+    _local_paths = dict(db._conn.execute(
+        "SELECT doc_key, local_path FROM docs WHERE local_path IS NOT NULL"))
+    _acache: dict[str, set[str]] = {}
+    _n_ids = db._conn.execute("SELECT COUNT(DISTINCT doc_key) FROM doc_anchors").fetchone()[0]
+    print(f"   锚点源: {_n_ids} 篇用源 HTML id，其余退回 md 标题", flush=True)
+
+    def anchors_for(key: str | None) -> set[str] | None:
+        if not key:
+            return None
+        if key in _acache:
+            return _acache[key]
+        ids = db.get_doc_anchors(key)
+        if ids:
+            s = set(ids) | {_anchor_slug(a) for a in ids}
+        else:
+            p = _local_paths.get(key)
+            if not p:
+                return None          # 既无采集 id 又无本地文件 → 不校验（避免误报）
+            try:
+                s = _doc_anchors((BASE_DIR / p).read_text(encoding="utf-8", errors="ignore"))
+            except Exception:
+                return None
+        _acache[key] = s
+        return s
 
     # 2. 收集唯一 URL（键=去 fragment、保留 query），按缓存 TTL 决定是否需重查
     t0 = time.time()
@@ -372,10 +398,10 @@ def main() -> None:
                     pass  # 自动 id，本地无法验证，视为有效
                 else:
                     if raw.startswith("#"):
-                        target_anchors = doc_anchors.get(doc_key)
+                        target_anchors = anchors_for(doc_key)
                     else:
                         target_key = doc_url_key.get(u)
-                        target_anchors = doc_anchors.get(target_key) if target_key else None
+                        target_anchors = anchors_for(target_key)
                     if target_anchors is not None and not _anchor_valid(a_slug, target_anchors):
                         anchor_miss.append({"text": text, "url": raw})
                         continue

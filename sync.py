@@ -114,6 +114,10 @@ def store_document(doc: dict, config: dict, value: dict) -> dict | None:
     html = value["content"].get("content", "")
     content_hash = stable_hash(html)
 
+    # 站点锚点 = 源 HTML 里的 id=（新版）+ <a name=（旧版页面）——链接锚点校验的权威依据
+    anchor_ids = sorted(set(re.findall(r'id="([^"]+)"', html))
+                        | set(re.findall(r'<a[^>]+name="([^"]+)"', html)))
+
     # 转换 + 图片本地化（用 thread-local session，连接复用）
     markdown, img_count = convert_and_localize(html, images_dir, get_session())
 
@@ -134,6 +138,7 @@ def store_document(doc: dict, config: dict, value: dict) -> dict | None:
         "url": doc_url(lang, catalog, file_name),
         "last_synced": datetime.now().isoformat(timespec="seconds"),
         "img_count": img_count,
+        "anchor_ids": anchor_ids,
     }
 
 
@@ -264,6 +269,9 @@ def sync(config: dict, db: IndexDB, catalogs: list[str], langs: list[str],
                     entry = fut.result()
                     if entry:
                         entry.pop("img_count", None)
+                        ids = entry.pop("anchor_ids", None)
+                        if ids is not None:
+                            db.set_doc_anchors(entry["doc_key"], ids)
                         db.upsert_doc(entry)
                         if change_type == "added":
                             added += 1

@@ -74,6 +74,15 @@ CREATE TABLE IF NOT EXISTS subscribers (
     created_at TEXT NOT NULL,
     status     TEXT DEFAULT 'active'   -- active / unsubscribed
 );
+
+-- 站点锚点（源 HTML 的 id=，原样保存）：链接锚点校验的权威依据。
+-- md 标题反推不可靠：站点锚点是 HTML 里的 id，可能挂在 <div class="section"> 上、
+-- 且文字可能与当前标题不一致（标题改过 / id 建库时生成）。同步时顺手写入。
+CREATE TABLE IF NOT EXISTS doc_anchors (
+    doc_key TEXT NOT NULL,             -- "{lang}|{catalog}|{relate_document}"
+    anchor  TEXT NOT NULL,
+    PRIMARY KEY (doc_key, anchor)
+);
 """
 
 
@@ -143,6 +152,31 @@ class IndexDB:
 
     def delete_doc(self, doc_key: str):
         self._conn.execute("DELETE FROM docs WHERE doc_key=?", (doc_key,))
+
+    # ── 站点锚点（源 HTML 的 id）────────────────────────────────────────
+    def set_doc_anchors(self, doc_key: str, anchors):
+        """整体替换某文档的锚点集（同步时用）。"""
+        self._conn.execute("DELETE FROM doc_anchors WHERE doc_key=?", (doc_key,))
+        rows = [(doc_key, a) for a in sorted(set(anchors or ()))]
+        if rows:
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO doc_anchors(doc_key, anchor) VALUES(?,?)", rows)
+
+    def get_doc_anchors(self, doc_key: str) -> set:
+        cur = self._conn.execute("SELECT anchor FROM doc_anchors WHERE doc_key=?", (doc_key,))
+        return {r[0] for r in cur.fetchall()}
+
+    def get_doc_anchors_map(self, keys) -> dict:
+        """批量取多篇文档的锚点集，返回 {doc_key: set}（缺失的为空集）。"""
+        keys = list(keys)
+        out = {k: set() for k in keys}
+        for i in range(0, len(keys), 400):
+            chunk = keys[i:i + 400]
+            q = ("SELECT doc_key, anchor FROM doc_anchors WHERE doc_key IN (%s)"
+                 % ",".join("?" * len(chunk)))
+            for dk, a in self._conn.execute(q, chunk):
+                out[dk].add(a)
+        return out
 
     def mark_deleted(self, doc_key: str):
         """删除索引条目（本地文件保留）。"""

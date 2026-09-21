@@ -19,7 +19,7 @@
     {% for m in nav_modules %}
     <a class="card" href="/{{ m.key }}/">
         <div class="icon">{{ m.icon }}</div>
-        <div class="name">{{ m.name }}</div>
+        <div class="name">{{ m.name }}{% if m.debug %} <span class="badge badge-modified">调试中</span>{% endif %}</div>
         <div class="desc">{{ m.description }}</div>
     </a>
     {% endfor %}

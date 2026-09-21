@@ -160,6 +160,8 @@ def _cell_text(it: dict, f: str, render: str) -> str:
             return " | ".join(
                 (f"{l.get('text','')} {l.get('url','')}".strip()) for l in v)
         return ""
+    if render == "link":
+        return str(v) if v else str(it["detail"].get("target", ""))
     if isinstance(v, list):
         return " ".join(str(x) for x in v[:30])
     return str(v) if v is not None else ""
@@ -173,6 +175,21 @@ def register_module(app, db_path: str, module: dict):
     app.jinja_env.filters.setdefault("highlight_cjk", _highlight_cjk)
     app.jinja_env.filters.setdefault("fmt_time", _fmt_time)
     app.jinja_env.filters.setdefault("fmt_value", _fmt_value)
+
+    def _resolve_view(args) -> tuple:
+        """解析当前视图配置。模块若定义 tabs（分组页签），则返回当前页签的
+        列/徽标/筛选；否则用模块自身的。返回
+        (item_columns, badge_map, multi_badge, filters, tabs, active_tab, tab_field)。"""
+        tabs = module.get("tabs")
+        if not tabs:
+            return (_norm_columns(module), badge_map, module.get("multi_badge"),
+                    module.get("filters"), None, None, None)
+        tab_field = module.get("tab_field", "module")
+        tkey = args.get("tab") or tabs[0]["key"]
+        active = next((t for t in tabs if t["key"] == tkey), tabs[0])
+        bm = {**DEFAULT_BADGE_MAP, **(active.get("badge_map") or {})}
+        return (_norm_columns(active), bm, active.get("multi_badge"),
+                active.get("filters", module.get("filters")), tabs, active, tab_field)
 
     @bp.route("/")
     def task_list():
@@ -192,6 +209,7 @@ def register_module(app, db_path: str, module: dict):
     @bp.route("/run/<int:run_id>")
     def task_detail(run_id):
         from flask import abort
+        cols, bm, multi_badge, filters, tabs, active_tab, tab_field = _resolve_view(request.args)
         db = IndexDB(db_path)
         try:
             run = db.get_run(run_id)
@@ -203,11 +221,18 @@ def register_module(app, db_path: str, module: dict):
             items = db.get_items(run_id) if run else []
         finally:
             db.close()
+        # 页签：按 tab_field 归组，只保留当前页签的项
+        tab_counts: dict = {}
+        if tabs and tab_field:
+            for it in items:
+                tk = it["detail"].get(tab_field)
+                tab_counts[tk] = tab_counts.get(tk, 0) + 1
+            items = [it for it in items if it["detail"].get(tab_field) == active_tab["key"]]
         filter_state = {}
-        if module.get("item_visible"):
+        if module.get("item_visible") and not tabs:
             items = [it for it in items if module["item_visible"](it)]
-        if module.get("filters"):
-            items, filter_state = _apply_filters(items, module, request.args)
+        if filters:
+            items, filter_state = _apply_filters(items, {"filters": filters}, request.args)
         # 分页：每页 per_page（模块可配置，默认 100），在筛选后内存切片
         per_page = module.get("per_page", 100)
         total = len(items)
@@ -220,13 +245,15 @@ def register_module(app, db_path: str, module: dict):
         from urllib.parse import urlencode
         q = {k: v for k, v in request.args.items() if k != "page"}
         return render_template("task_detail.html", module=module, run=run,
-                               items=items_page, badge_map=badge_map,
+                               items=items_page, badge_map=bm, multi_badge=multi_badge,
+                               tabs=tabs, active_tab=active_tab, tab_counts=tab_counts,
+                               filters=filters,
                                filter_state=filter_state,
                                page=page,
                                total_pages=total_pages,
                                total=total,
                                base_qs=urlencode(q),
-                               item_columns=_norm_columns(module))
+                               item_columns=cols)
 
     @bp.route("/run/<int:run_id>/export")
     def task_export(run_id):
@@ -236,24 +263,28 @@ def register_module(app, db_path: str, module: dict):
 
         from flask import abort, send_file
 
+        cols, bm, multi_badge, filters, tabs, active_tab, tab_field = _resolve_view(request.args)
+        view_mod = {**module, "multi_badge": multi_badge, "badge_map": bm}
         db = IndexDB(db_path)
         try:
             run = db.get_run(run_id)
             if not run or run["module_key"] != key:
                 abort(404)
             items = db.get_items(run_id)
-            col_defs = _norm_columns(module)
+            col_defs = cols
         finally:
             db.close()
-        if module.get("item_visible"):
+        if tabs and tab_field:
+            items = [it for it in items if it["detail"].get(tab_field) == active_tab["key"]]
+        if module.get("item_visible") and not tabs:
             items = [it for it in items if module["item_visible"](it)]
-        if module.get("filters"):
-            items, _ = _apply_filters(items, module, request.args)
+        if filters:
+            items, _ = _apply_filters(items, {"filters": filters}, request.args)
         buf = io.StringIO()
         w = csv.writer(buf)
         w.writerow(["类型"] + [lab for _, lab, _ in col_defs])
         for it in items:
-            w.writerow([_type_labels(it, module)]
+            w.writerow([_type_labels(it, view_mod)]
                        + [_cell_text(it, f, rt) for f, _, rt in col_defs])
         # \ufeff BOM：让 Excel 正确识别 UTF-8 中文
         content = "\ufeff" + buf.getvalue()

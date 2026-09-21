@@ -34,7 +34,9 @@
 </style>
 <div class="page-head">
     <div>
-        <h1>{{ module.icon }} {{ module.name }}</h1>
+        <h1>{{ module.icon }} {{ module.name }}
+            {% if module.debug %}<span class="badge badge-modified" style="vertical-align:middle;margin-left:8px;font-size:12px">调试中</span>{% endif %}
+        </h1>
         <p class="subtitle">{{ module.description }}</p>
     </div>
     {% if module.key == 'sync' %}
@@ -111,6 +113,98 @@
         <div class="label">锚点失效</div>
     </div>
 </div>
+{% endif %}
+
+{% if imgnorm_stats is defined and imgnorm_stats %}
+<div class="stats">
+    <div class="stat-card">
+        <div class="num">{{ "{:,}".format(imgnorm_stats.checked) }}</div>
+        <div class="label">检查图片</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--deleted)">{{ "{:,}".format(imgnorm_stats.issues) }}</div>
+        <div class="label">问题图片</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--modified)">{{ "{:,}".format(imgnorm_stats.n_term) }}</div>
+        <div class="label">术语/大小写</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--deleted)">{{ "{:,}".format(imgnorm_stats.n_sensitive) }}</div>
+        <div class="label">敏感信息</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--deleted)">{{ "{:,}".format(imgnorm_stats.n_watermark) }}</div>
+        <div class="label">水印/内部字样</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--primary)">{{ "{:,}".format(imgnorm_stats.n_placeholder) }}</div>
+        <div class="label">占位/测试残留</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--primary)">{{ "{:,}".format(imgnorm_stats.n_trad) }}</div>
+        <div class="label">繁体字</div>
+    </div>
+    <div class="stat-card">
+        <div class="num">{{ "{:,}".format(imgnorm_stats.n_reverse_en) }}</div>
+        <div class="label">中文图含英文</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--deleted)">{{ "{:,}".format(imgnorm_stats.n_lowq) }}</div>
+        <div class="label">低清/模糊</div>
+    </div>
+</div>
+{% endif %}
+
+{% if recheck_stats is defined and recheck_stats %}
+<div class="stats">
+    <div class="stat-card">
+        <div class="num">{{ "{:,}".format(recheck_stats.total) }}</div>
+        <div class="label">复核项</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--added)">{{ "{:,}".format(recheck_stats.resolved) }}</div>
+        <div class="label">✅ 已解决</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--modified)">{{ "{:,}".format(recheck_stats.still) }}</div>
+        <div class="label">⚠️ 仍存在</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--deleted)">{{ "{:,}".format(recheck_stats.gone) }}</div>
+        <div class="label">➖ 已失效</div>
+    </div>
+    <div class="stat-card">
+        <div class="num">{{ recheck_stats.rate }}%</div>
+        <div class="label">解决率</div>
+    </div>
+</div>
+
+{% if recheck_modules %}
+<h2 style="font-size:16px; margin-bottom:12px">按模块解决情况</h2>
+<div class="lod-grid">
+    {% for m in recheck_modules %}
+    <a class="lang-card" style="display:block; text-decoration:none; color:inherit"
+       href="{% if recheck_run_id %}/recheck/run/{{ recheck_run_id }}?tab={{ m.key }}{% else %}#{% endif %}">
+        <div class="lc-head">
+            <span class="lc-title">{{ m.label }} →</span>
+            <span class="lc-sum"><b>{{ "{:,}".format(m.total) }}</b> 项 · 解决率 <b>{{ m.rate }}%</b>
+                · 仍有问题 <b>{{ "{:,}".format(m.issue_count) }}</b></span>
+        </div>
+        <div class="cat-bar" style="display:flex">
+            <span style="width:{{ m.p_resolved }}%; background:linear-gradient(90deg,#34b37a,#128c4a)"></span>
+            <span style="width:{{ m.p_still }}%; background:linear-gradient(90deg,#e8a33d,#c2570a)"></span>
+            <span style="width:{{ 100 - m.p_resolved - m.p_still }}%; background:#b7bcc6"></span>
+        </div>
+        <div style="margin-top:7px; font-size:12px; color:var(--muted)">
+            ✅ 已解决 <b style="color:var(--added)">{{ "{:,}".format(m.resolved) }}</b>
+            · ⚠️ 仍存在 <b style="color:var(--modified)">{{ "{:,}".format(m.still) }}</b>
+            · ➖ 已失效 <b>{{ "{:,}".format(m.gone) }}</b>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
 {% endif %}
 
 {% if catalog_overview is defined and catalog_overview %}

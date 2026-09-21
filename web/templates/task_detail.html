@@ -19,9 +19,20 @@
 <p class="subtitle">运行记录不存在</p>
 {% endif %}
 
-{% if module.filters and items is defined %}
+{% if tabs %}
+<div class="tabs">
+    {% for t in tabs %}
+    <a class="tab {{ 'active' if t.key == active_tab.key else '' }}" href="?tab={{ t.key }}">
+        {{ t.icon or '' }} {{ t.label }}<span class="tab-n">{{ "{:,}".format(tab_counts.get(t.key, 0)) }}</span>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if filters and items is defined %}
 <form method="get" class="filters">
-    {% for f in module.filters %}
+    <input type="hidden" name="tab" value="{{ active_tab.key if active_tab else '' }}">
+    {% for f in filters %}
     <label>{{ f.label }}</label>
     {% if f.control == 'text' %}
     <input type="text" name="{{ f.key }}" value="{{ filter_state.get(f.key, '') }}"
@@ -56,9 +67,9 @@
     {% for it in items %}
         <tr>
             <td>
-                {% if module.multi_badge is defined and module.multi_badge %}
+                {% if multi_badge %}
                     {% set ns = namespace(active=false) %}
-                    {% for fd, cls, label in module.multi_badge %}
+                    {% for fd, cls, label in multi_badge %}
                         {% if it.detail.get(fd, 0) > 0 %}
                             <span class="badge {{ cls }}">{{ label }}</span>
                             {% set ns.active = true %}
@@ -74,7 +85,14 @@
             </td>
             {% for f, label, render in item_columns %}
             <td>
-                {% if render == 'link_list' %}
+                {% if render == 'link' %}
+                    {% set lv = it.detail.get(f) or it.detail.get('target') %}
+                    {% if lv and lv.startswith('http') %}
+                        <a class="issue-link" href="{{ lv }}" target="_blank" rel="noopener">{{ lv[:90] }} ↗</a>
+                    {% elif lv %}
+                        <span class="mono">{{ lv }}</span>
+                    {% endif %}
+                {% elif render == 'link_list' %}
                     {% set links = it.detail.get(f, []) %}
                     {% if links %}
                         {% for l in links %}
