@@ -31,6 +31,24 @@ if str(BASE_DIR) not in sys.path:
 from db import IndexDB  # noqa: E402
 import ignores  # noqa: E402
 
+# 模块 → 「问题复核」对应页签 key（仅复核覆盖的模块）。用于在模块汇总页引导用户跳转。
+_RECHECK_TABS = {"ocr": "ocr", "encheck": "encheck", "linkcheck": "linkcheck"}
+
+
+def _recheck_guide(db, key: str) -> dict:
+    """模块汇总页「到问题复核看全量问题」的引导上下文（不适用则返回空）。"""
+    if key not in _RECHECK_TABS:
+        return {}
+    try:
+        row = db._conn.execute(
+            "SELECT id FROM runs WHERE module_key='recheck' AND status='success' "
+            "ORDER BY id DESC LIMIT 1").fetchone()
+    except Exception:
+        return {}
+    if not row:
+        return {}
+    return {"recheck_run_id": row[0], "recheck_tab": _RECHECK_TABS[key]}
+
 _CJK2_RE = re.compile(r"([\u4e00-\u9fff]{2,})")
 
 
@@ -281,6 +299,7 @@ def register_module(app, db_path: str, module: dict):
             extra = {}
             if module.get("context_provider"):
                 extra = module["context_provider"](db)
+            extra.update(_recheck_guide(db, key))
         finally:
             db.close()
         return render_template("task_list.html", module=module,

@@ -21,6 +21,25 @@
 .ign-chips form { margin: 0; }
 .link-item form { display: inline; margin: 0; }
 .ign-note { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+/* ── 忽略确认弹框 ─────────────────────────────────────────── */
+.ign-mask { position: fixed; inset: 0; z-index: 100; padding: 20px;
+    background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center;
+    font-weight: normal; }
+.ign-mask[hidden] { display: none; }
+.ign-modal { background: #fff; border-radius: 14px; width: 100%; max-width: 400px;
+    padding: 22px 22px 18px; box-shadow: 0 20px 50px rgba(15,23,42,.30);
+    animation: ignIn .14s ease-out; white-space: normal; }
+@keyframes ignIn { from { transform: translateY(8px) scale(.98); opacity: 0; }
+                   to { transform: none; opacity: 1; } }
+.ign-mt { font-size: 16px; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+.ign-mb { font-size: 13px; color: var(--muted); line-height: 1.7; margin-bottom: 18px;
+    word-break: break-word; }
+.ign-ma { display: flex; gap: 10px; justify-content: flex-end; }
+.ign-btn { padding: 7px 18px; border-radius: 8px; font-size: 13px; cursor: pointer;
+    border: 1px solid var(--border); background: #fff; color: var(--text); }
+.ign-cancel:hover { background: #f6f7fa; }
+.ign-ok { background: var(--deleted); border-color: var(--deleted); color: #fff; font-weight: 600; }
+.ign-ok:hover { opacity: .9; }
 </style>
 <a class="back" href="/{{ module.key }}/">← 返回 {{ module.name }}</a>
 <h1>{{ module.icon }} {{ module.name }} · 运行 #{{ run.id if run else '?' }}</h1>
@@ -135,6 +154,7 @@
                                 <input type="hidden" name="item_id" value="{{ it.id }}">
                                 <button class="ign-mini {{ 'on' if e.p.ignored else '' }}" name="act"
                                         value="toggle:{{ e.idx }}" data-idx="{{ e.idx }}"
+                                        data-mode="{{ 'restore' if e.p.ignored else 'ignore' }}"
                                         title="{{ '点击恢复：这条链接重新参与检查' if e.p.ignored else '点击忽略这条链接（所有文档里都不再报）' }}">{{ '已忽略' if e.p.ignored else '忽略' }}</button>
                             </form>
                         </div>
@@ -176,6 +196,7 @@
                         <button class="ign-chip {{ 'on' if p.ignored else '' }}" name="act"
                                 value="toggle:{{ loop.index0 }}" data-idx="{{ loop.index0 }}"
                                 data-label="{{ p.kind_label }}"
+                                data-mode="{{ 'restore' if p.ignored else 'ignore' }}"
                                 title="{{ '点击恢复该问题' if p.ignored else '点击忽略该问题' }}">{{ p.kind_label }}{% if p.ignored %} · 已忽略{% endif %}</button>
                     </form>
                     {% endif %}{% endfor %}
@@ -186,6 +207,7 @@
                     <input type="hidden" name="run_id" value="{{ run.id if run else '' }}">
                     <input type="hidden" name="item_id" value="{{ it.id }}">
                     <button class="ign-all" name="act" value="all"
+                            data-mode="{{ 'restore' if n_ign == n_all else 'ignore' }}"
                             title="这一行的所有问题一起忽略 / 恢复">{{ '↩ 恢复全部' if n_ign == n_all else '🚫 全部忽略' }}</button>
                 </form>
                 {% endif %}
@@ -206,15 +228,67 @@
 </div>
 {% endif %}
 {% if has_ign %}
+<div class="ign-mask" id="ignMask" hidden>
+    <div class="ign-modal" role="dialog" aria-modal="true" aria-labelledby="ignMT" aria-describedby="ignMB">
+        <div class="ign-mt" id="ignMT">确认忽略？</div>
+        <div class="ign-mb" id="ignMB"></div>
+        <div class="ign-ma">
+            <button type="button" class="ign-btn ign-cancel" id="ignCancel">取消</button>
+            <button type="button" class="ign-btn ign-ok" id="ignOk">确认忽略</button>
+        </div>
+    </div>
+</div>
 <script>
-/* 忽略开关：原地更新，不整页刷新（滚动位置不动）。失败时退回整页刷新。 */
+/* 忽略开关：先弹框确认（仅“忽略”方向），再原地更新、不整页刷新。失败时退回整页刷新。 */
 (function () {
   var MODE = {{ show_mode|tojson }};
+
+  /* ── 忽略确认弹框 ─────────────────────────────────────── */
+  var mask = document.getElementById('ignMask');
+  var mtEl = document.getElementById('ignMT'), mbEl = document.getElementById('ignMB');
+  var okEl = document.getElementById('ignOk'), cancelEl = document.getElementById('ignCancel');
+  var pending = null;
+  function closeConfirm() { mask.hidden = true; pending = null; }
+  function openConfirm(btn, tr, cb) {
+    var title = '确认忽略该问题？', body;
+    if (btn.classList.contains('ign-all')) {
+      title = '确认忽略本行全部问题？';
+      var n = tr ? tr.querySelectorAll('button[data-idx]').length : 0;
+      body = '本行 ' + (n || '全部') + ' 个问题将全部标记为「已忽略」，不再计入统计与日报。';
+    } else if (btn.classList.contains('ign-chip')) {
+      body = '本行中「' + (btn.dataset.label || '该类型') + '」问题将标记为「已忽略」，不再计入统计与日报。';
+    } else {
+      var a = btn.closest('.link-item') && btn.closest('.link-item').querySelector('a');
+      var txt = a ? a.textContent.trim().replace(/\s*↗\s*$/, '') : '';
+      if (txt.length > 46) txt = txt.slice(0, 46) + '…';
+      body = (txt ? '链接「' + txt + '」' : '这条链接') + '将在所有文档中都不再报告。';
+    }
+    body += '　可随时在「已忽略问题」页恢复。';
+    mtEl.textContent = title; mbEl.textContent = body;
+    pending = cb; mask.hidden = false;
+    cancelEl.focus();            /* 焦点给「取消」，避免回车误确认 */
+  }
+  okEl.addEventListener('click', function () { var cb = pending; closeConfirm(); if (cb) cb(); });
+  cancelEl.addEventListener('click', closeConfirm);
+  mask.addEventListener('click', function (e) { if (e.target === mask) closeConfirm(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !mask.hidden) closeConfirm();
+  });
+
   document.addEventListener('submit', function (e) {
     var form = e.target;
     if (!form.classList || !form.classList.contains('ign-f')) return;
     e.preventDefault();
     var btn = form.querySelector('button[name="act"]');
+    /* 忽略方向先弹确认；恢复方向（data-mode=restore）直接执行 */
+    if (btn && btn.dataset.mode === 'ignore') {
+      openConfirm(btn, form.closest('tr'), function () { doSubmit(form, btn); });
+      return;
+    }
+    doSubmit(form, btn);
+  });
+
+  function doSubmit(form, btn) {
     var fd = new FormData(form);
     /* 关键：FormData(form) 不含提交按钮本身，必须手动补上 act */
     if (btn) fd.append(btn.name, btn.value);
@@ -237,7 +311,7 @@
         }
         form.submit();
       });
-  });
+  }
 
   function applyUpdate(tr, j) {
     if (!tr || !j || !j.problems) return;
@@ -253,9 +327,14 @@
       } else {
         b.textContent = st.ignored ? (b.dataset.label + ' · 已忽略') : b.dataset.label;
       }
+      b.dataset.mode = st.ignored ? 'restore' : 'ignore';   /* 下次点击的方向 */
     });
     var all = tr.querySelector('.ign-all');
-    if (all) all.textContent = (nAll > 0 && nIgn === nAll) ? '↩ 恢复全部' : '🚫 全部忽略';
+    if (all) {
+      var allIgn = nAll > 0 && nIgn === nAll;
+      all.textContent = allIgn ? '↩ 恢复全部' : '🚫 全部忽略';
+      all.dataset.mode = allIgn ? 'restore' : 'ignore';
+    }
     var badge = tr.querySelector('.badge-ign');
     if (badge) { badge.textContent = '已忽略 ' + nIgn; badge.style.display = nIgn ? '' : 'none'; }
     var normal = tr.querySelector('.js-normal');

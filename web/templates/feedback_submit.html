@@ -87,7 +87,7 @@
                     <td style="white-space:nowrap;">
                         <a class="btn-link" href="/feedback/{{ it.id }}/done">已处理</a>
                         <a class="btn-link" href="/feedback/{{ it.id }}/doing" style="background:var(--modified)">处理中</a>
-                        <a class="btn-link" href="/feedback/{{ it.id }}/ignore" style="background:var(--muted)">忽略</a>
+                        <a class="btn-link" href="/feedback/{{ it.id }}/ignore" style="background:var(--muted)" onclick="return confirm('确认忽略这条反馈？忽略后不再出现在待处理列表。')">忽略</a>
                     </td>
                 </tr>
             {% endfor %}

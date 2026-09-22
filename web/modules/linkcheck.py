@@ -33,29 +33,33 @@ def _item_visible(it: dict) -> bool:
 
 
 def _linkcheck_context(db) -> dict:
-    """最近一次检查的概览（供顶部卡片）——按当前忽略状态过滤后统计。"""
-    row = db._conn.execute(
-        "SELECT id, summary_json FROM runs WHERE module_key='linkcheck' "
-        "ORDER BY id DESC LIMIT 1").fetchone()
+    """当前链接问题概览（供顶部卡片）：跨全部 run **按文档去重取最新**，再按忽略状态过滤统计。
+
+    与 encheck/OCR 口径一致——日常 run 是增量的，若只取最近一次 run，卡片数字会变成
+    “当天增量”而非“当前全量”。「检查文档」取文档总数（正常文档不写 item，无法从 items 统计）。
+    """
     stats = {"checked": 0, "dead": 0, "vintage": 0, "anchor_miss": 0}
-    if row:
-        run_id, sj = row
+    rows = db._conn.execute(
+        "SELECT i.item_key, i.detail_json FROM items i "
+        "JOIN runs r ON i.run_id = r.id WHERE r.module_key='linkcheck' "
+        "ORDER BY r.id ASC, i.id ASC").fetchall()
+    latest: dict[str, str] = {}
+    for item_key, detail_json in rows:
+        latest[item_key] = detail_json           # 后写覆盖 → 保留最新一次结果
+    try:
+        stats["checked"] = db._conn.execute("SELECT COUNT(*) FROM docs").fetchone()[0]
+    except Exception:
+        stats["checked"] = len(latest)
+    rules = ignores.active_map(db)
+    for detail_json in latest.values():
         try:
-            stats["checked"] = (json.loads(sj or "{}") or {}).get("checked", 0)
+            d = json.loads(detail_json)
         except Exception:
-            pass
-        # 逐条按忽略过滤后累加（run 数据不动，恢复即时生效）
-        rules = ignores.active_map(db)
-        for r in db._conn.execute("SELECT detail_json FROM items WHERE run_id=?",
-                                  (run_id,)).fetchall():
-            try:
-                d = json.loads(r[0])
-            except Exception:
-                continue
-            d2, _ign, _rem = ignores.strip("linkcheck", d, rules)
-            stats["dead"] += d2.get("dead_count", 0)
-            stats["vintage"] += d2.get("vintage_count", 0)
-            stats["anchor_miss"] += d2.get("anchor_miss_count", 0)
+            continue
+        d2, _ign, _rem = ignores.strip("linkcheck", d, rules)   # 按忽略过滤后统计
+        stats["dead"] += d2.get("dead_count", 0)
+        stats["vintage"] += d2.get("vintage_count", 0)
+        stats["anchor_miss"] += d2.get("anchor_miss_count", 0)
     return {"linkcheck_stats": stats}
 
 

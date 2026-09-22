@@ -23,7 +23,8 @@ def _ocr_context(db) -> dict:
     """OCR 统计卡片 + 最新英文图含中文列表。"""
     rows = db._conn.execute(
         "SELECT i.item_type, i.detail_json, i.item_key FROM items i "
-        "JOIN runs r ON i.run_id = r.id WHERE r.module_key='ocr'"
+        "JOIN runs r ON i.run_id = r.id WHERE r.module_key='ocr' "
+        "ORDER BY r.id ASC, i.id ASC"     # 升序 → 同图后写覆盖，保留最新一次结果
     ).fetchall()
     checked: set[str] = set()
     has_cn = en_has_cn = errors = 0

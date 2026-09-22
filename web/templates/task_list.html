@@ -4,6 +4,15 @@
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .page-head h1 { margin-top: 0; }
 .page-head .subtitle { margin-top: 6px; }
+/* 到「问题复核」看全量问题的引导条 */
+.recheck-guide { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    margin: 2px 0 26px; padding: 14px 18px; border-radius: var(--radius);
+    background: #f2f6ff; border: 1px solid #dbe5fb; }
+.recheck-guide .rg-text { flex: 1 1 340px; font-size: 13px; color: #33405c; line-height: 1.7; }
+.recheck-guide .rg-link { flex: 0 0 auto; padding: 8px 16px; background: var(--primary);
+    color: #fff; border-radius: 8px; font-size: 13px; text-decoration: none;
+    white-space: nowrap; }
+.recheck-guide .rg-link:hover { opacity: .9; text-decoration: none; }
 .file-link { flex: 0 0 auto; margin-top: 4px; display: inline-flex; align-items: center;
     gap: 6px; background: var(--primary); color: #fff; text-decoration: none;
     padding: 9px 18px; border-radius: 8px; font-size: 14px; white-space: nowrap; }
@@ -245,6 +254,15 @@
         {% endfor %}
     </div>
     {% endfor %}
+</div>
+{% endif %}
+
+{% if recheck_tab and recheck_run_id %}
+<div class="recheck-guide">
+    <div class="rg-text">
+        本页是<b>单次增量检查</b>的结果明细。想查看<b>当前全量问题</b>，请到「问题复核」的对应页签查看。
+    </div>
+    <a class="rg-link" href="/recheck/run/{{ recheck_run_id }}?tab={{ recheck_tab }}">🗓️ 问题复核 · {{ module.name }} →</a>
 </div>
 {% endif %}
 
