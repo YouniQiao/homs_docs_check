@@ -437,7 +437,7 @@ class IndexDB:
         self._conn.execute(
             "INSERT INTO subscribers (email, created_at, status) VALUES (?,?,?)"
             " ON CONFLICT(email) DO UPDATE SET status='active', created_at=?",
-            (email, now, now, now))
+            (email, now, "active", now))
         self._conn.commit()
         return True
 
