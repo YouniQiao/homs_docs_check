@@ -377,25 +377,25 @@ def register_module(app, db_path: str, module: dict):
 
         cols, bm, multi_badge, filters, tabs, active_tab, tab_field = _resolve_view(request.args)
         view_mod = {**module, "multi_badge": multi_badge, "badge_map": bm}
-        db = IndexDB(db_path)
-        try:
-            run = db.get_run(run_id)
-            if not run or run["module_key"] != key:
-                abort(404)
-            items = db.get_items(run_id)
-            col_defs = cols
-        finally:
-            db.close()
-        if tabs and tab_field:
-            items = [it for it in items if it["detail"].get(tab_field) == active_tab["key"]]
         # 忽略：导出同样按当前忽略状态与「显示」模式（run 数据不动，恢复即时生效）
         mk = active_tab["key"] if (tabs and active_tab) else key
         has_ign = ignores.supports(mk)
         show_mode = request.args.get("show", "default") if has_ign else "default"
         if show_mode not in ("default", "with", "only"):
             show_mode = "default"
+        db = IndexDB(db_path)
+        try:
+            run = db.get_run(run_id)
+            if not run or run["module_key"] != key:
+                abort(404)
+            items = db.get_items(run_id)
+            ig_rules = db.active_ignore_map() if has_ign else {}
+            col_defs = cols
+        finally:
+            db.close()
+        if tabs and tab_field:
+            items = [it for it in items if it["detail"].get(tab_field) == active_tab["key"]]
         if has_ign:
-            ig_rules = db.active_ignore_map()
             _annotate_ignores(items, mk, ig_rules)
             items = _filter_by_show(items, show_mode)
         if module.get("item_visible") and not tabs and show_mode == "default":

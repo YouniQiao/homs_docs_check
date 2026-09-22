@@ -14,7 +14,7 @@ from __future__ import annotations
 
 # kind 定义：(kind, 标签, detail 里的计数字段, detail 里的明细列表字段)
 KINDS: dict[str, list[tuple]] = {
-    "linkcheck": [("dead", "真死链", "dead_count", "dead_links"),
+    "linkcheck": [("dead", "断链", "dead_count", "dead_links"),
                   ("vintage", "误链历史版本", "vintage_count", "vintage_links"),
                   ("anchor_miss", "锚点失效", "anchor_miss_count", "anchor_miss_links")],
     "encheck": [("hanzi", "含汉字", "hanzi_count", None),

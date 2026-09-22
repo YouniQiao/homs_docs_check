@@ -42,7 +42,7 @@ from imgnorm.rules import FIELD, RULES, analyze  # noqa: E402
 import ignores  # noqa: E402
 
 # verdict 的 ptype / 计数字段 → 忽略 kind
-LINK_KIND = {"真死链": "dead", "误链历史版本": "vintage", "锚点失效": "anchor_miss"}
+LINK_KIND = {"断链": "dead", "误链历史版本": "vintage", "锚点失效": "anchor_miss"}
 EN_KIND = {"hanzi_count": "hanzi", "punct_count": "punct",
            "url_cn_char_count": "url_cn", "cn_link_count": "cn_link"}
 DATA_DIR = BASE_DIR / "data"
@@ -78,7 +78,7 @@ def collect_targets(db) -> dict:
             continue
         if mk == "linkcheck":
             dk = d.get("doc_key") or item_key
-            for field, ptype in (("dead_links", "真死链"), ("vintage_links", "误链历史版本"),
+            for field, ptype in (("dead_links", "断链"), ("vintage_links", "误链历史版本"),
                                  ("anchor_miss_links", "锚点失效")):
                 for l in (d.get(field) or []):
                     url = l.get("url") if isinstance(l, dict) else l
@@ -157,7 +157,7 @@ def _verdict(module, ptype, target, status, evidence, **kw):
 
 
 def verdicts_linkcheck(db, tg, urls_ref, args, meta, rules) -> list:
-    """逐条复核历史链接问题：锚点/历史版本本地判、真死链才发请求。已忽略的直接跳过。"""
+    """逐条复核历史链接问题：锚点/历史版本本地判、断链才发请求。已忽略的直接跳过。"""
     out, dead_todo = [], []
     doc_cache: dict[str, str | None] = {}
     url_key = {}   # cache_key -> doc_key（本地文档 URL 映射）
@@ -244,11 +244,11 @@ def verdicts_linkcheck(db, tg, urls_ref, args, meta, rules) -> list:
             else:
                 rec.update(status="resolved", evidence="已不再指向历史版本")
             out.append(rec)
-        else:   # 真死链
+        else:   # 断链
             dead_todo.append(rec)
 
     if dead_todo:
-        print(f"   [linkcheck] 重新请求真死链 {len(dead_todo)} 个（间隔 {args.int_delay}s）", flush=True)
+        print(f"   [linkcheck] 重新请求断链 {len(dead_todo)} 个（间隔 {args.int_delay}s）", flush=True)
         for i, rec in enumerate(dead_todo, 1):
             url = rec["target"]
             try:
@@ -261,11 +261,11 @@ def verdicts_linkcheck(db, tg, urls_ref, args, meta, rules) -> list:
                 rec["evidence"] = f"HTTP {st}（已恢复）"
             elif b == "dead":
                 rec["status"] = "still"
-                rec["evidence"] = f"HTTP {st}（仍为死链）"
+                rec["evidence"] = f"HTTP {st}（仍为断链）"
             else:
-                # 被拒/服务端异常/不可达 = 已不是死链（反爬拦截或临时故障），不计入"真死链仍存在"
+                # 被拒/服务端异常/不可达 = 已不是断链（反爬拦截或临时故障），不计入"断链仍存在"
                 rec["status"] = "resolved"
-                rec["evidence"] = f"HTTP {st}（非死链：{_BUCKET_LABEL.get(b, b)}）"
+                rec["evidence"] = f"HTTP {st}（非断链：{_BUCKET_LABEL.get(b, b)}）"
             out.append(rec)
             if args.int_delay:
                 time.sleep(args.int_delay)
@@ -485,7 +485,7 @@ def build_items(verdicts: list, meta: dict) -> list[tuple]:
         dk = v["doc_key"]
         b = by_doc.setdefault(dk, {"dead_links": [], "vintage_links": [], "anchor_miss_links": []})
         entry = {"text": v.get("text", "") or v["target"], "url": v["target"]}
-        if v["ptype"] == "真死链":
+        if v["ptype"] == "断链":
             b["dead_links"].append(entry)
         elif v["ptype"] == "误链历史版本":
             b["vintage_links"].append(entry)

@@ -1,10 +1,10 @@
-"""模块：链接健康检查（展示：检查文档 / 真死链 / 误链历史版本 / 锚点失效）。
+"""模块：链接健康检查（展示：检查文档 / 断链 / 误链历史版本 / 锚点失效）。
 
 执行脚本：linkcheck/link_check.py（--full 全量 / 默认增量；URL 结果带 TTL 缓存）。
 后端仍会采集"被拒 / 服务端异常 / 不可达"，但**不在界面展示**（本模块只暴露需要的维度）。
 
 "检查文档"= 本次检查覆盖的文档数（summary.checked），与其他模块口径一致；
-列表只列"有可见问题（真死链/历史版本/锚点失效）"的文档。
+列表只列"有可见问题（断链/历史版本/锚点失效）"的文档。
 detail: doc_key/lang/catalog/url、*_links[]{text,url,status,kind}、*_count
 """
 
@@ -68,16 +68,16 @@ LINKCHECK_MODULE = {
     "name": "链接健康检查",
     "nav_name": "链接检查",        # 顶栏菜单用短名
     "icon": "🔗",
-    "description": "链接健康检查：真死链 / 误链历史版本 / 锚点失效（真实 HTTP + 缓存 TTL）",
+    "description": "链接健康检查：断链 / 误链历史版本 / 锚点失效（真实 HTTP + 缓存 TTL）",
     "runs_title": "链接检查记录",
-    "summary_fields": [("checked", "检查文档"), ("dead", "真死链"),
+    "summary_fields": [("checked", "检查文档"), ("dead", "断链"),
                        ("vintage", "误链历史版本"), ("anchor_miss", "锚点失效")],
-    "detail_summary_fields": [("checked", "检查文档"), ("dead", "真死链"),
+    "detail_summary_fields": [("checked", "检查文档"), ("dead", "断链"),
                               ("vintage", "误链历史版本"),
                               ("anchor_miss", "锚点失效")],
     "item_columns": [
         ("catalog", "分类"),
-        ("dead_links", "真死链(404/410)", "link_list"),
+        ("dead_links", "断链(404/410)", "link_list"),
         ("vintage_links", "历史版本链接", "link_list"),
         ("anchor_miss_links", "锚点失效链接", "link_list"),
         ("url", "源文档"),
@@ -88,16 +88,16 @@ LINKCHECK_MODULE = {
         {"key": "type", "label": "问题", "source": "count",
          "fields": {"dead": "dead_count", "vintage": "vintage_count",
                     "anchor_miss": "anchor_miss_count"},
-         "options": [("all", "全部"), ("dead", "真死链"),
+         "options": [("all", "全部"), ("dead", "断链"),
                      ("vintage", "误链历史版本"), ("anchor_miss", "锚点失效")]},
         {"key": "catalog", "label": "分类", "source": "detail",
          "options": [("all", "全部")] + [(c, c) for c in CATALOGS]},
         {"key": "sort", "label": "排序", "source": "sort",
-         "options": [("id_desc", "默认"), ("dead_count_desc", "真死链从高到低"),
+         "options": [("id_desc", "默认"), ("dead_count_desc", "断链从高到低"),
                      ("anchor_miss_count_desc", "锚点失效从高到低")]},
     ],
     "multi_badge": [
-        ("dead_count", "badge-failed", "真死链"),
+        ("dead_count", "badge-failed", "断链"),
         ("vintage_count", "badge-deleted", "误链历史版本"),
         ("anchor_miss_count", "badge-info", "锚点失效"),
     ],

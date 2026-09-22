@@ -50,9 +50,9 @@ DETAILS = {
     },
     "linkcheck": {
         "title": "链接健康检查",
-        "fields": [("checked", "检查文档"), ("dead", "真死链"),
+        "fields": [("checked", "检查文档"), ("dead", "断链"),
                    ("vintage", "误链历史版本"), ("anchor_miss", "锚点失效")],
-        "focus": [("dead", "真死链"), ("vintage", "误链历史版本"),
+        "focus": [("dead", "断链"), ("vintage", "误链历史版本"),
                   ("anchor_miss", "锚点失效")],
         "zero_note": "链接检查正常",
     },

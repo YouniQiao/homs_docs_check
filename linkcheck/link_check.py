@@ -1,4 +1,4 @@
-"""链接健康检查（真死链 / 被拒 / 服务端异常 / 不可达 / 锚点失效）。
+"""链接健康检查（断链 / 被拒 / 服务端异常 / 不可达 / 锚点失效）。
 
 相对旧版的修正：
   A. HTTP 请求**保留查询参数**（旧版 _normalize 会剥掉 ?query，导致带参链接被误判 400/404）
@@ -243,7 +243,7 @@ def collect_docs(doc_keys: set[str] | None = None) -> list[tuple]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="链接健康检查（真死链/被拒/异常/锚点）")
+    ap = argparse.ArgumentParser(description="链接健康检查（断链/被拒/异常/锚点）")
     ap.add_argument("--full", action="store_true", help="全量扫描")
     ap.add_argument("--refresh", action="store_true", help="忽略缓存，强制重查所有 URL")
     ap.add_argument("--dry-run", action="store_true", help="只统计不写库")
@@ -443,7 +443,7 @@ def main() -> None:
         "anchor_miss": sum(p["anchor_miss_count"] for p in problems),
         "urls_checked": len(status),
     }
-    print(f"   统计: {summary['total']} 篇问题 | 真死链 {summary['dead']} | "
+    print(f"   统计: {summary['total']} 篇问题 | 断链 {summary['dead']} | "
           f"被拒 {summary['blocked']} | 服务端异常 {summary['server']} | "
           f"不可达 {summary['unreachable']} | 历史版本 {summary['vintage']} | "
           f"锚点失效 {summary['anchor_miss']}", flush=True)
