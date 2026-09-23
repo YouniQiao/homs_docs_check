@@ -219,7 +219,8 @@
             <a href="/{{ m.key }}/" class="{{ 'active' if module and module.key == m.key else '' }}">{{ m.icon }} {{ m.nav_name or m.name }}</a>
             {% endfor %}
             <a class="right {{ 'active' if request.path.startswith('/subscribe') else '' }}" href="/subscribe">📬 邮件订阅</a>
-            <a class="right {{ 'active' if request.path.startswith('/feedback') else '' }}" href="/feedback">💬 问题反馈</a>
+            {# 问题反馈入口（用户 2026-09 要求隐藏；功能保留，可直连 /feedback） #}
+            {# <a class="right {{ 'active' if request.path.startswith('/feedback') else '' }}" href="/feedback">💬 问题反馈</a> #}
         </div>
     </nav>
     <div class="container">
