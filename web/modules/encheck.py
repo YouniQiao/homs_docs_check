@@ -18,19 +18,22 @@ import ignores
 
 def _encheck_context(db) -> dict:
     """按文档去重（取最新一次结果）统计各项问题数，供顶部概览卡片展示。"""
+    # 顶部 = 最新一日的检查（最近一次成功 run，增量口径；用户 2026-09 定）
     rows = db._conn.execute(
         "SELECT i.item_key, i.item_type, i.detail_json FROM items i "
-        "JOIN runs r ON i.run_id = r.id WHERE r.module_key='encheck' "
-        "ORDER BY r.id ASC, i.id ASC"
+        "WHERE i.run_id=(SELECT MAX(id) FROM runs WHERE module_key='encheck' AND status='success') "
+        "ORDER BY i.id ASC"
     ).fetchall()
     latest: dict[str, tuple] = {}
     for item_key, item_type, detail_json in rows:
         latest[item_key] = (item_type, detail_json)  # 后写覆盖 → 保留最新
 
-    # "检查文档"取英文文档总数（正常文档不写 item，无法从 items 统计）
+    # "检查文档"取本次（最新一日）run 的检查数（正常文档不写 item，从 run 摘要取）
     try:
-        checked_total = db._conn.execute(
-            "SELECT COUNT(*) FROM docs WHERE lang='en'").fetchone()[0]
+        _s = db._conn.execute(
+            "SELECT summary_json FROM runs WHERE module_key='encheck' AND status='success' "
+            "ORDER BY id DESC LIMIT 1").fetchone()
+        checked_total = (json.loads(_s[0] or "{}").get("total") if _s else 0) or 0
     except Exception:
         checked_total = len(latest)
 
@@ -61,6 +64,10 @@ def _encheck_context(db) -> dict:
             hit = True
         if not hit:
             stats["clean"] += 1
+    _ra = db._conn.execute(
+        "SELECT started_at FROM runs WHERE module_key='encheck' AND status='success' "
+        "ORDER BY id DESC LIMIT 1").fetchone()
+    stats["run_at"] = _ra[0] if _ra else None
     return {"encheck_stats": stats}
 
 
@@ -70,7 +77,7 @@ ENCHECK_MODULE = {
     "nav_name": "英文文档检查",    # 顶栏菜单名（用户 2026-09 定）
     "icon": "🌐",
     "description": "检查英文文档中的中文字符与中文跳转链接",
-    "runs_title": "英文文档检查记录",
+    "runs_title": "每日增量内容英文文档检查记录",
     "summary_fields": [("total", "检查文档"), ("hanzi", "含汉字"),
                        ("url_cn", "链接URL含中文"), ("cn_link", "含中文链接")],
     "detail_summary_fields": [("total", "检查文档"), ("hanzi", "含汉字"),

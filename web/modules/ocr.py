@@ -21,10 +21,11 @@ import ignores  # noqa: E402
 
 def _ocr_context(db) -> dict:
     """OCR 统计卡片 + 最新英文图含中文列表。"""
+    # 顶部 = 最新一日的检查（最近一次成功 run，增量口径；用户 2026-09 定）
     rows = db._conn.execute(
         "SELECT i.item_type, i.detail_json, i.item_key FROM items i "
-        "JOIN runs r ON i.run_id = r.id WHERE r.module_key='ocr' "
-        "ORDER BY r.id ASC, i.id ASC"     # 升序 → 同图后写覆盖，保留最新一次结果
+        "WHERE i.run_id=(SELECT MAX(id) FROM runs WHERE module_key='ocr' AND status='success') "
+        "ORDER BY i.id ASC"
     ).fetchall()
     checked: set[str] = set()
     has_cn = en_has_cn = errors = 0
@@ -68,8 +69,12 @@ def _ocr_context(db) -> dict:
             if len(en_cn_images) >= 8:
                 break
 
+    _ra = db._conn.execute(
+        "SELECT started_at FROM runs WHERE module_key='ocr' AND status='success' "
+        "ORDER BY id DESC LIMIT 1").fetchone()
     return {"ocr_stats": {"checked": len(checked), "has_cn": has_cn,
-                          "en_has_cn": en_has_cn, "errors": errors},
+                          "en_has_cn": en_has_cn, "errors": errors,
+                          "run_at": _ra[0] if _ra else None},
             "en_cn_images": en_cn_images}
 
 
@@ -78,7 +83,7 @@ OCR_MODULE = {
     "name": "图片 OCR 检查",
     "icon": "🔍",
     "description": "检测文档图片中的中文（PaddleOCR），全量 + 每日增量",
-    "runs_title": "图片OCR检查记录",
+    "runs_title": "每日增量内容图片OCR检查记录",
     "per_page": 30,
     "summary_fields": [("total", "检查总数"), ("has_cn", "含中文"),
                        ("en_has_cn", "英文图含中文"), ("errors", "错误")],

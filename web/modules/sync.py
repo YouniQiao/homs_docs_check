@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 # 项目根目录（web/modules/sync.py 上三级）
@@ -76,8 +77,20 @@ def build_catalog_overview(db) -> dict:
 
 
 def _sync_context(db) -> dict:
+    # 最新一条同步 run（供「每日增量数据」区块展示新增/修改/删除）
+    latest = db._conn.execute(
+        "SELECT started_at, summary_json FROM runs WHERE module_key='sync' "
+        "ORDER BY id DESC LIMIT 1").fetchone()
+    sync_latest, sync_latest_at = {}, None
+    if latest:
+        sync_latest_at = latest[0]
+        try:
+            sync_latest = json.loads(latest[1] or "{}")
+        except Exception:
+            sync_latest = {}
     return {"catalog_stats": build_catalog_stats(db),
-            "catalog_overview": build_catalog_overview(db)}
+            "catalog_overview": build_catalog_overview(db),
+            "sync_latest": sync_latest, "sync_latest_at": sync_latest_at}
 
 
 SYNC_FILTERS = [

@@ -39,15 +39,19 @@ def _linkcheck_context(db) -> dict:
     “当天增量”而非“当前全量”。「检查文档」取文档总数（正常文档不写 item，无法从 items 统计）。
     """
     stats = {"checked": 0, "dead": 0, "vintage": 0, "anchor_miss": 0}
+    # 顶部 = 最新一日的检查（最近一次成功 run，增量口径；用户 2026-09 定）
     rows = db._conn.execute(
         "SELECT i.item_key, i.detail_json FROM items i "
-        "JOIN runs r ON i.run_id = r.id WHERE r.module_key='linkcheck' "
-        "ORDER BY r.id ASC, i.id ASC").fetchall()
+        "WHERE i.run_id=(SELECT MAX(id) FROM runs WHERE module_key='linkcheck' AND status='success') "
+        "ORDER BY i.id ASC").fetchall()
     latest: dict[str, str] = {}
     for item_key, detail_json in rows:
         latest[item_key] = detail_json           # 后写覆盖 → 保留最新一次结果
     try:
-        stats["checked"] = db._conn.execute("SELECT COUNT(*) FROM docs").fetchone()[0]
+        _s = db._conn.execute(
+            "SELECT summary_json FROM runs WHERE module_key='linkcheck' AND status='success' "
+            "ORDER BY id DESC LIMIT 1").fetchone()
+        stats["checked"] = (json.loads(_s[0] or "{}").get("checked", 0) if _s else 0) or 0
     except Exception:
         stats["checked"] = len(latest)
     rules = ignores.active_map(db)
@@ -60,6 +64,10 @@ def _linkcheck_context(db) -> dict:
         stats["dead"] += d2.get("dead_count", 0)
         stats["vintage"] += d2.get("vintage_count", 0)
         stats["anchor_miss"] += d2.get("anchor_miss_count", 0)
+    _ra = db._conn.execute(
+        "SELECT started_at FROM runs WHERE module_key='linkcheck' AND status='success' "
+        "ORDER BY id DESC LIMIT 1").fetchone()
+    stats["run_at"] = _ra[0] if _ra else None
     return {"linkcheck_stats": stats}
 
 
@@ -68,7 +76,7 @@ LINKCHECK_MODULE = {
     "name": "链接健康检查",
     "icon": "🔗",
     "description": "链接健康检查：断链 / 误链历史版本 / 锚点失效（真实 HTTP + 缓存 TTL）",
-    "runs_title": "链接检查记录",
+    "runs_title": "每日增量内容链接检查记录",
     "summary_fields": [("checked", "检查文档"), ("dead", "断链"),
                        ("vintage", "误链历史版本"), ("anchor_miss", "锚点失效")],
     "detail_summary_fields": [("checked", "检查文档"), ("dead", "断链"),

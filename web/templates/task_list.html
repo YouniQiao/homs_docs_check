@@ -13,6 +13,9 @@
     color: #fff; border-radius: 8px; font-size: 13px; text-decoration: none;
     white-space: nowrap; }
 .recheck-guide .rg-link:hover { opacity: .9; text-decoration: none; }
+    /* 竖排变体：跳转按钮在左，说明文字在按钮下方（3 个日常检查模块用） */
+    .recheck-guide.rg-stack { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .recheck-guide.rg-stack .rg-text { flex: none; }
 .file-link { flex: 0 0 auto; margin-top: 4px; display: inline-flex; align-items: center;
     gap: 6px; background: var(--primary); color: #fff; text-decoration: none;
     padding: 9px 18px; border-radius: 8px; font-size: 14px; white-space: nowrap; }
@@ -78,6 +81,7 @@
 </div>
 
 {% if ocr_stats is defined and ocr_stats %}
+<h2 style="font-size:16px; margin-bottom:12px">每日增量数据</h2>
 <div class="stats">
     <div class="stat-card">
         <div class="num">{{ ocr_stats.checked }}</div>
@@ -95,10 +99,17 @@
         <div class="num" style="color:var(--deleted)">{{ ocr_stats.errors }}</div>
         <div class="label">识别失败</div>
     </div>
+    {% if ocr_stats.run_at %}
+    <div class="stat-card">
+        <div class="num" style="font-size:15px">{{ ocr_stats.run_at|fmt_time }}</div>
+        <div class="label">本次检查时间</div>
+    </div>
+    {% endif %}
 </div>
 {% endif %}
 
 {% if encheck_stats is defined and encheck_stats %}
+<h2 style="font-size:16px; margin-bottom:12px">每日增量数据</h2>
 <div class="stats">
     <div class="stat-card">
         <div class="num">{{ "{:,}".format(encheck_stats.checked) }}</div>
@@ -124,10 +135,17 @@
         <div class="num" style="color:var(--deleted)">{{ "{:,}".format(encheck_stats.errors) }}</div>
         <div class="label">读取失败</div>
     </div>
+    {% if encheck_stats.run_at %}
+    <div class="stat-card">
+        <div class="num" style="font-size:15px">{{ encheck_stats.run_at|fmt_time }}</div>
+        <div class="label">本次检查时间</div>
+    </div>
+    {% endif %}
 </div>
 {% endif %}
 
 {% if linkcheck_stats is defined and linkcheck_stats %}
+<h2 style="font-size:16px; margin-bottom:12px">每日增量数据</h2>
 <div class="stats">
     <div class="stat-card">
         <div class="num">{{ "{:,}".format(linkcheck_stats.checked) }}</div>
@@ -145,6 +163,12 @@
         <div class="num" style="color:var(--primary)">{{ "{:,}".format(linkcheck_stats.anchor_miss) }}</div>
         <div class="label">锚点失效</div>
     </div>
+    {% if linkcheck_stats.run_at %}
+    <div class="stat-card">
+        <div class="num" style="font-size:15px">{{ linkcheck_stats.run_at|fmt_time }}</div>
+        <div class="label">本次检查时间</div>
+    </div>
+    {% endif %}
 </div>
 {% endif %}
 
@@ -276,7 +300,7 @@
 {% endif %}
 
 {% if catalog_overview is defined and catalog_overview %}
-<h2 style="font-size:16px; margin-bottom:12px">文档与图片统计</h2>
+<h2 style="font-size:16px; margin-bottom:12px">全量文档与图片统计</h2>
 <div class="stats">
     <div class="stat-card">
         <div class="num">{{ "{:,}".format(catalog_overview.totals.docs) }}</div>
@@ -316,12 +340,36 @@
 </div>
 {% endif %}
 
+{% if sync_latest %}
+<h2 style="font-size:16px; margin-bottom:12px">每日增量数据</h2>
+<div class="stats">
+    <div class="stat-card">
+        <div class="num" style="color:#128c4a">{{ "{:,}".format(sync_latest.get('added', 0)) }}</div>
+        <div class="label">新增</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:#c2570a">{{ "{:,}".format(sync_latest.get('modified', 0)) }}</div>
+        <div class="label">修改</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:#d13438">{{ "{:,}".format(sync_latest.get('deleted', 0)) }}</div>
+        <div class="label">删除</div>
+    </div>
+    {% if sync_latest_at %}
+    <div class="stat-card">
+        <div class="num" style="font-size:15px">{{ sync_latest_at|fmt_time }}</div>
+        <div class="label">本次同步时间</div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
 {% if recheck_tab and recheck_run_id %}
-<div class="recheck-guide">
+<div class="recheck-guide rg-stack">
+    <a class="rg-link" href="/recheck/run/{{ recheck_run_id }}?tab={{ recheck_tab }}">🗓️ 当前全量问题 · {{ module.name }} →</a>
     <div class="rg-text">
         本页是<b>单次增量检查</b>的结果明细。想查看<b>当前全量问题</b>，请到「当前全量问题」的对应页签查看。
     </div>
-    <a class="rg-link" href="/recheck/run/{{ recheck_run_id }}?tab={{ recheck_tab }}">🗓️ 当前全量问题 · {{ module.name }} →</a>
 </div>
 {% endif %}
 
