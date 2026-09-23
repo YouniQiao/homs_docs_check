@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}系统合并整改 · 关键词配置{% endblock %}
+{% block content %}
+<h1 class="page-title">🧩 系统合并整改 · 关键词配置</h1>
+<p class="page-desc">
+  这里维护扫描中文文档时使用的**待识别关键词**与**老文档链接前缀**。
+  一行一个；保存后立即生效，下次扫描（<code>python3 sysmerge/scan.py</code>）即按新词表执行。
+</p>
+
+{% if saved %}
+<div class="flash-ok">✅ 已保存（{{ terms.split('\n')|length }} 个关键词 + {{ links.split('\n')|length }} 个链接前缀）</div>
+{% endif %}
+
+<form method="post" class="kw-form">
+  <div class="kw-col">
+    <label>关键词（一行一个）</label>
+    <textarea name="terms" rows="26" spellcheck="false">{{ terms }}</textarea>
+  </div>
+  <div class="kw-col">
+    <label>老文档链接前缀（一行一个，部分链接也行）</label>
+    <textarea name="links" rows="26" spellcheck="false">{{ links }}</textarea>
+  </div>
+  <div class="kw-actions">
+    <button type="submit" class="btn-primary">保存</button>
+    <a class="btn-link" href="/sysmerge/">← 返回系统合并整改</a>
+  </div>
+</form>
+
+<style>
+.kw-form { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+.kw-col { flex: 1 1 420px; min-width: 300px; }
+.kw-col label { display: block; font-size: 13px; font-weight: 600; color: #41485c; margin-bottom: 6px; }
+.kw-col textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 13px;
+  line-height: 1.7; border: 1px solid #d8dce8; border-radius: 8px; font-family: inherit;
+  background: #fff; resize: vertical; }
+.kw-actions { flex-basis: 100%; display: flex; align-items: center; gap: 16px; margin-top: 4px; }
+.btn-primary { padding: 8px 22px; border: 0; border-radius: 8px; background: #2f54d0;
+  color: #fff; font-size: 14px; cursor: pointer; }
+.btn-primary:hover { opacity: .92; }
+.btn-link { color: #2f54d0; text-decoration: none; font-size: 13px; }
+.flash-ok { padding: 10px 14px; border-radius: 8px; background: #eaf7ee; color: #1f7a3f;
+  border: 1px solid #c6e7d1; font-size: 13px; margin-bottom: 16px; }
+.page-desc { color: #6b7280; font-size: 13px; margin-bottom: 18px; line-height: 1.7; }
+</style>
+{% endblock %}

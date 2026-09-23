@@ -36,3 +36,8 @@ nohup.out
 # .env
 # *.token
 .smtp.env
+
+# 系统合并整改：忽略记录（用户数据）与 Kit 缓存（可由目录树重建）
+sysmerge/ignore.db
+sysmerge/ignore.db-*
+sysmerge/kit_map.json

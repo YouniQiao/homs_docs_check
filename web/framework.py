@@ -31,12 +31,12 @@ if str(BASE_DIR) not in sys.path:
 from db import IndexDB  # noqa: E402
 import ignores  # noqa: E402
 
-# 模块 → 「问题复核」对应页签 key（仅复核覆盖的模块）。用于在模块汇总页引导用户跳转。
+# 模块 → 「当前全量问题」对应页签 key（仅复核覆盖的模块）。用于在模块汇总页引导用户跳转。
 _RECHECK_TABS = {"ocr": "ocr", "encheck": "encheck", "linkcheck": "linkcheck"}
 
 
 def _recheck_guide(db, key: str) -> dict:
-    """模块汇总页「到问题复核看全量问题」的引导上下文（不适用则返回空）。"""
+    """模块汇总页「到当前全量问题看全量问题」的引导上下文（不适用则返回空）。"""
     if key not in _RECHECK_TABS:
         return {}
     try:
@@ -320,7 +320,7 @@ def register_module(app, db_path: str, module: dict):
             items = db.get_items(run_id) if run else []
             mk = active_tab["key"] if (tabs and active_tab) else key
             has_ign = ignores.supports(mk)
-            ig_rules = db.active_ignore_map() if has_ign else {}
+            ig_rules = ignores.active_map(db) if has_ign else {}
         finally:
             db.close()
         # 忽略：只做展示端过滤（run 数据不动 → 恢复即时生效）。
@@ -389,7 +389,7 @@ def register_module(app, db_path: str, module: dict):
             if not run or run["module_key"] != key:
                 abort(404)
             items = db.get_items(run_id)
-            ig_rules = db.active_ignore_map() if has_ign else {}
+            ig_rules = ignores.active_map(db) if has_ign else {}
             col_defs = cols
         finally:
             db.close()
@@ -447,7 +447,7 @@ def register_module(app, db_path: str, module: dict):
             if not ignores.supports(mk):
                 abort(400)
             probs = ignores.item_problems(mk, detail, row[0])
-            rules = db.active_ignore_map()
+            rules = ignores.active_map(db)
             flags = [ignores.is_ignored(rules, mk, p["target"], p["kind"],
                                         p.get("doc_key", "")) for p in probs]
             if act == "all":
@@ -467,7 +467,7 @@ def register_module(app, db_path: str, module: dict):
             ignores.apply_selection(db, mk, probs, selected, reason=reason,
                                     ip=_client_ip())
             # 回读最新状态：XHR 请求直接原地更新页面（不整页刷新）
-            rules2 = db.active_ignore_map()
+            rules2 = ignores.active_map(db)
             flags2 = [ignores.is_ignored(rules2, mk, p["target"], p["kind"],
                                          p.get("doc_key", "")) for p in probs]
             n_ign = sum(1 for f in flags2 if f)

@@ -36,18 +36,56 @@ def _load_imgnorm_kinds() -> list[tuple]:
 
 KINDS["imgnorm"] = _load_imgnorm_kinds()
 
+
+def _load_sysmerge_kinds() -> list[tuple]:
+    """系统合并整改：匹配词本身就是「问题类型」（词表可编辑，故动态加载）。"""
+    try:
+        import json as _json
+        import pathlib as _pl
+        p = _pl.Path(__file__).resolve().parent / "sysmerge" / "keywords.json"
+        d = _json.loads(p.read_text(encoding="utf-8"))
+        return [(t, t, None, None) for t in (d.get("terms", []) + d.get("links", []))]
+    except Exception:
+        return []
+
+
+KINDS["sysmerge"] = _load_sysmerge_kinds()
+
 # 目标在界面上的称呼
-TARGET_LABEL = {"linkcheck": "链接", "encheck": "文档", "ocr": "图片", "imgnorm": "图片"}
+TARGET_LABEL = {"linkcheck": "链接", "encheck": "文档", "ocr": "图片",
+                "imgnorm": "图片", "sysmerge": "文档"}
 
 # 模块在本站的显示名（用于忽略记录/管理展示）
 MODULE_LABEL = {"linkcheck": "链接健康检查", "encheck": "英文文档检查",
                 "ocr": "图片 OCR 检查", "imgnorm": "图片内容规范检查",
-                "sync": "文档同步", "recheck": "问题复核"}
+                "sync": "文档同步", "recheck": "当前全量问题",
+                "sysmerge": "系统合并整改"}
 
 
 def supports(module_key: str) -> bool:
     """该模块是否支持忽略。"""
     return bool(KINDS.get(module_key))
+
+
+# ── 忽略记录的后端：默认写 index.db 的 ignores 表；模块可注册自己的后端 ──
+# 用途：系统合并整改（sysmerge）要求忽略记录放独立库（sysmerge/ignore.db），
+# 通过 register_backend("sysmerge", lambda: IgnoreStore()) 接入，其余模块不受影响。
+_BACKENDS: dict = {}
+
+
+def register_backend(module_key: str, factory) -> None:
+    """factory() -> 具有 active_ignore_map/add_ignore/restore_ignores_for 的对象。"""
+    _BACKENDS[module_key] = factory
+
+
+def _backend(db, module_key: str):
+    f = _BACKENDS.get(module_key)
+    if f is None:
+        return db
+    try:
+        return f()
+    except Exception:
+        return db
 
 
 def kinds_of(module_key: str) -> list[tuple]:
@@ -62,8 +100,17 @@ def kind_label(module_key: str, kind: str) -> str:
 
 
 def active_map(db) -> dict:
-    """生效中的忽略 → {module: [{target,doc_key,kind}]}（便捷包装）。"""
-    return db.active_ignore_map()
+    """生效中的忽略 → {module: [{target,doc_key,kind}]}（便捷包装）。
+
+    含已注册独立后端（如 sysmerge）的记录，其余模块仍取 index.db。
+    """
+    m = db.active_ignore_map()
+    for mk, f in _BACKENDS.items():
+        try:
+            m[mk] = f().active_ignore_map().get(mk, [])
+        except Exception:
+            m.setdefault(mk, [])
+    return m
 
 
 def is_ignored(rules: dict, module_key: str, target: str, kind: str,
@@ -75,7 +122,9 @@ def is_ignored(rules: dict, module_key: str, target: str, kind: str,
     if not target:
         return False
     for r in rules.get(module_key, ()):
-        if r["kind"] != kind or r["target"] != target:
+        if r["kind"] != kind:
+            continue
+        if r["target"] not in ("*", target):   # "*" = 整词忽略（该匹配词全忽略）
             continue
         if r["doc_key"] and r["doc_key"] != doc_key:
             continue
@@ -128,6 +177,15 @@ def item_problems(module_key: str, detail: dict, item_type: str = "") -> list[di
             if d.get(cnt_f, 0) > 0:
                 out.append({"kind": kind, "kind_label": label, "target": img,
                             "doc_key": "", "label": label})
+    elif module_key == "sysmerge":
+        # 一条 item = 一篇文档 × 一个匹配词；目标 = 文档 doc_key，kind = 匹配词
+        term = d.get("matched", "") or ""
+        dk = d.get("doc_key", "") or ""
+        if term:
+            # 链接类匹配词很长（老文档 URL），chip 上只显示尾部，完整值放 title
+            label = term if len(term) <= 30 else "…" + term[-28:]
+            out.append({"kind": term, "kind_label": term, "target": dk,
+                        "doc_key": "", "label": label, "full": term})
     return out
 
 
@@ -192,6 +250,15 @@ def strip(module_key: str, detail: dict, rules: dict,
                     d[cnt_f] = 0
                 else:
                     rem += 1
+    elif module_key == "sysmerge":
+        term = d.get("matched", "") or ""
+        dk = d.get("doc_key", "") or ""
+        if term:
+            if is_ignored(rules, module_key, dk, term):
+                ign += 1
+                d["ignored"] = True
+            else:
+                rem += 1
     return d, ign, rem
 
 
@@ -213,21 +280,22 @@ def apply_selection(db, module_key: str, problems: list[dict], selected: set[str
 
     selected 是 encode_problem 的字符串集合。返回 (新增数, 恢复数)。
     """
-    rules = db.active_ignore_map()
+    rules = active_map(db)
     added = restored = 0
     for p in problems:
         key = encode_problem(p)
         want = key in selected
         have = is_ignored(rules, module_key, p["target"], p["kind"], p.get("doc_key", ""))
         if want and not have:
-            if db.add_ignore(module_key, p["target"], p["kind"], doc_key="",
-                             reason=reason, ip=ip):
+            if _backend(db, module_key).add_ignore(
+                    module_key, p["target"], p["kind"], doc_key="",
+                    reason=reason, ip=ip):
                 added += 1
                 rules.setdefault(module_key, []).append(
                     {"target": p["target"], "doc_key": "", "kind": p["kind"]})
         elif (not want) and have:
-            n = db.restore_ignores_for(module_key, p["target"], p["kind"],
-                                       p.get("doc_key", ""), ip=ip)
+            n = _backend(db, module_key).restore_ignores_for(
+                module_key, p["target"], p["kind"], p.get("doc_key", ""), ip=ip)
             restored += n
             if n:
                 rules[module_key] = [

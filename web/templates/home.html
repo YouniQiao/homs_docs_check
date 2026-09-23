@@ -12,6 +12,8 @@
      gap: 6px; flex-wrap: wrap; }
 .home-cards .desc { font-size: 12.5px; line-height: 1.5; }
 .home-group { margin-bottom: 26px; }
+.home-empty { padding: 13px 16px; border: 1px dashed #d8dce8; border-radius: 8px;
+    background: #fafbfd; color: #9aa1b3; font-size: 13px; }
 .home-group > h2 { font-size: 15px; font-weight: 600; color: #41485c;
      display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .home-group > h2::before { content: ""; width: 3px; height: 15px;
@@ -41,9 +43,13 @@
 {% for gname, mods in home_groups %}
 <div class="home-group">
     <h2>{{ gname }}</h2>
+    {% if mods %}
     <div class="cards home-cards">
         {% for m in mods %}{{ modcard(m) }}{% endfor %}
     </div>
+    {% else %}
+    <div class="home-empty">暂无卡片，后续陆续添加</div>
+    {% endif %}
 </div>
 {% endfor %}
 
@@ -77,13 +83,13 @@
                 </tr>
                 <tr class="weekly">
                     <td class="mono">每周日 22:00</td>
-                    <td>🗓️ 问题复核（全量）</td>
+                    <td>🗓️ 当前全量问题（全量）</td>
                     <td>把<b>全部历史问题</b>重新核一遍，判定「已解决 / 仍存在 / 已失效」并给出总体解决率（约 2 分钟；图片 OCR 复用未变动的识别结果，只重核变动部分）</td>
                 </tr>
             </tbody>
         </table>
         <div class="sched-note">
-            前四个任务<b>每日</b>执行、结果实时可见；问题复核<b>每周日</b>执行，其后 00:00 向订阅邮箱发送《每周复核周报》。点击上方模块卡片可查看各模块历史与明细。
+            前四个任务<b>每日</b>执行、结果实时可见；当前全量问题<b>每周日</b>执行，其后 00:00 向订阅邮箱发送《每周复核周报》。点击上方模块卡片可查看各模块历史与明细。
         </div>
     </div>
 </div>

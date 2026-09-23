@@ -21,6 +21,7 @@ from feedback import register_feedback  # noqa: E402
 from subscribe import register_subscribe  # noqa: E402
 from a2a_view import register_a2a  # noqa: E402
 from ignored import register_ignored  # noqa: E402
+from sysmerge_pages import register_sysmerge  # noqa: E402
 
 DB_PATH = str(BASE_DIR / "index.db")
 
@@ -44,6 +45,7 @@ def create_app() -> Flask:
     register_subscribe(app, DB_PATH)
     register_a2a(app, DB_PATH)
     register_ignored(app, DB_PATH)
+    register_sysmerge(app, DB_PATH)
 
     @app.route("/")
     def home():

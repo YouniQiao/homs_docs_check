@@ -120,7 +120,9 @@
                   padding: 2px 8px; border-radius: 6px; }
         .link-item { margin-bottom: 2px; }
         .issue-link { color: var(--deleted); font-size: 12px; text-decoration: none;
-                      border-bottom: 1px dashed var(--deleted); word-break: break-all; }
+                      border-bottom: 1px dashed var(--deleted); display: inline-block;
+                      max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+                      white-space: nowrap; vertical-align: bottom; }
         .issue-link:hover { text-decoration: underline; }
         .link-more { font-size: 12px; color: var(--muted); }
         .filter-input { padding: 6px 10px; border: 1px solid var(--border);

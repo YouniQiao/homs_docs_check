@@ -1,0 +1,37 @@
+{
+  "_comment": "系统合并整改 — 待识别关键词/链接。页面可编辑（web/modules/sysmerge.py 的 /sysmerge/keywords）。",
+  "terms": [
+    "API服务",
+    "API管理",
+    "API密钥（凭据）",
+    "AGC",
+    "AppGallery Connect",
+    "APP与元服务",
+    "Connect API",
+    "HMS API服务",
+    "付费服务",
+    "管理中心",
+    "开发与服务",
+    "开发者中心",
+    "开放能力管理",
+    "我的签署",
+    "项目费用",
+    "项目设置",
+    "消费明细",
+    "消费提醒",
+    "协议签署记录",
+    "已购服务",
+    "余额",
+    "账号组",
+    "账户概览"
+  ],
+  "links": [
+    "https://developer.huawei.com/consumer/cn/console",
+    "https://developer.huawei.com/consumer/cn/console/",
+    "https://developer.huawei.com/consumer/cn/doc/app/agc-help-",
+    "https://developer.huawei.com/consumer/cn/doc/AppGallery-connect-",
+    "https://developer.huawei.com/consumer/cn/doc/start/",
+    "https://developer.huawei.com/consumer/cn/service/josp/agc/index.html#",
+    "https://developer.huawei.com/consumer/cn/service/josp/agc/index.html#/"
+  ]
+}

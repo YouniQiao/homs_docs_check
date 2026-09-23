@@ -4,7 +4,7 @@
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .page-head h1 { margin-top: 0; }
 .page-head .subtitle { margin-top: 6px; }
-/* 到「问题复核」看全量问题的引导条 */
+/* 到「当前全量问题」看全量问题的引导条 */
 .recheck-guide { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
     margin: 2px 0 26px; padding: 14px 18px; border-radius: var(--radius);
     background: #f2f6ff; border: 1px solid #dbe5fb; }
@@ -121,6 +121,35 @@
         <div class="num" style="color:var(--primary)">{{ "{:,}".format(linkcheck_stats.anchor_miss) }}</div>
         <div class="label">锚点失效</div>
     </div>
+</div>
+{% endif %}
+
+{% if sysmerge_stats is defined and sysmerge_stats %}
+<div class="stats">
+    <div class="stat-card">
+        <div class="num">{{ "{:,}".format(sysmerge_stats.checked) }}</div>
+        <div class="label">扫描文档</div>
+    </div>
+    <div class="stat-card">
+        <div class="num">{{ "{:,}".format(sysmerge_stats.hit_docs) }}</div>
+        <div class="label">命中文档</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--deleted)">{{ "{:,}".format(sysmerge_stats.issues) }}</div>
+        <div class="label">待整改</div>
+    </div>
+    <div class="stat-card">
+        <div class="num">{{ "{:,}".format(sysmerge_stats.ignored) }}</div>
+        <div class="label">已忽略</div>
+    </div>
+    <div class="stat-card">
+        <div class="num" style="color:var(--modified)">{{ "{:,}".format(sysmerge_stats.no_kit) }}</div>
+        <div class="label">未识别 Kit</div>
+    </div>
+</div>
+<div class="recheck-guide">
+    <span>🧩 扫描中文文档中 AGC / 管理中心等老系统的名称、功能与老文档链接。</span>
+    <a class="btn-recheck" href="/sysmerge/keywords">⚙️ 关键词配置 →</a>
 </div>
 {% endif %}
 
@@ -260,9 +289,9 @@
 {% if recheck_tab and recheck_run_id %}
 <div class="recheck-guide">
     <div class="rg-text">
-        本页是<b>单次增量检查</b>的结果明细。想查看<b>当前全量问题</b>，请到「问题复核」的对应页签查看。
+        本页是<b>单次增量检查</b>的结果明细。想查看<b>当前全量问题</b>，请到「当前全量问题」的对应页签查看。
     </div>
-    <a class="rg-link" href="/recheck/run/{{ recheck_run_id }}?tab={{ recheck_tab }}">🗓️ 问题复核 · {{ module.name }} →</a>
+    <a class="rg-link" href="/recheck/run/{{ recheck_run_id }}?tab={{ recheck_tab }}">🗓️ 当前全量问题 · {{ module.name }} →</a>
 </div>
 {% endif %}
 

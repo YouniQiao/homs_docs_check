@@ -1,4 +1,4 @@
-"""模块：问题复核。
+"""模块：当前全量问题。
 
 执行脚本：recheck/recheck.py（把历史发现的问题重新核一遍）。
 
@@ -101,13 +101,13 @@ def _safe(sj) -> dict:
 
 RECHECK_MODULE = {
     "key": "recheck",
-    "name": "问题复核",
+    "name": "当前全量问题",
     "nav_name": "复核",            # 顶栏菜单用短名
     "icon": "🗓️",
     "debug": False,            # 不再打「调试中」（用户 2026-09）；imgnorm 仍打
     "in_nav": False,             # 不进顶栏菜单（用户 2026-09 要求）；仍保留在首页「结果复核」组里
     "description": "复核历史发现的问题：已解决 / 仍存在 / 已失效（明细只列仍存在的问题）",
-    "runs_title": "问题复核记录",
+    "runs_title": "当前全量问题记录",
     "per_page": 30,
     "tabs": TABS,
     "tab_field": "module",

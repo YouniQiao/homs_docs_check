@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""问题复核（module_key='recheck'）：把**全部历史发现的问题**重新核一遍，看是否已被修复。
+"""当前全量问题（module_key='recheck'）：把**全部历史发现的问题**重新核一遍，看是否已被修复。
 
 页面形态（用户口径）：
   · 按模块分开，用**各模块原来的列/样式**呈现（页签切换）；
@@ -550,7 +550,7 @@ def build_items(verdicts: list, meta: dict) -> list[tuple]:
 
 # ───────────────────────────────────────────── 主流程
 def main():
-    ap = argparse.ArgumentParser(description="问题复核（历史问题是否已解决）")
+    ap = argparse.ArgumentParser(description="当前全量问题（历史问题是否已解决）")
     ap.add_argument("--module", default="all", choices=["all"] + list(ALL_MODULES))
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--limit", type=int, default=0, help="每模块最多复核多少项（调试）")
