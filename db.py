@@ -30,9 +30,13 @@ CREATE TABLE IF NOT EXISTS docs (
     content_hash   TEXT,               -- HTML 内容 sha256（兜底判据）
     local_path     TEXT,
     url            TEXT,
-    last_synced    TEXT
+    last_synced    TEXT,
+    kit            TEXT,               -- 所属 Kit（目录树推导，缺省 NULL）
+    ide            TEXT                -- IDE 分组（relate_document 以 ide- 开头，缺省 NULL）
 );
 CREATE INDEX IF NOT EXISTS idx_docs_catalog ON docs(catalog, lang);
+-- 注意：idx_docs_kit / idx_docs_ide 不在本 SCHEMA 里建，而在 __init__ 的迁移补列之后建：
+-- 旧库的 docs 还没有 kit/ide 列，写在 SCHEMA 里会让 executescript 抛 "no such column: kit"。
 
 CREATE TABLE IF NOT EXISTS runs (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,6 +77,19 @@ CREATE TABLE IF NOT EXISTS subscribers (
     email      TEXT PRIMARY KEY,
     created_at TEXT NOT NULL,
     status     TEXT DEFAULT 'active'   -- active / unsubscribed
+);
+
+-- GitCode OAuth 登录用户（P1：仅身份 + 头像；关注领域/问题列表等后续阶段再挂）。
+-- 用 gitcode_id（GitCode 用户 id，字符串）做唯一键：login 可改名，id 不变。
+CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    gitcode_id    TEXT UNIQUE NOT NULL,
+    login         TEXT NOT NULL,
+    name          TEXT,
+    avatar_url    TEXT,
+    email         TEXT,
+    created_at    TEXT NOT NULL,
+    last_login_at TEXT
 );
 
 -- 站点锚点（源 HTML 的 id=，原样保存）：链接锚点校验的权威依据。
@@ -120,6 +137,13 @@ class IndexDB:
             self._conn.execute("ALTER TABLE docs ADD COLUMN content_hash TEXT")
         if "display_update_time" not in cols:
             self._conn.execute("ALTER TABLE docs ADD COLUMN display_update_time TEXT")
+        if "kit" not in cols:
+            self._conn.execute("ALTER TABLE docs ADD COLUMN kit TEXT")
+        if "ide" not in cols:
+            self._conn.execute("ALTER TABLE docs ADD COLUMN ide TEXT")
+        # 索引在补列之后建（旧库此时才有 kit/ide 列）
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_docs_kit ON docs(kit)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_docs_ide ON docs(ide)")
         # 迁移：弃用的旧表 sync_runs / sync_changes（若为空则删除，已被 runs/items 取代）
         tables = {r[0] for r in self._conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
@@ -136,7 +160,7 @@ class IndexDB:
         cur = self._conn.execute(
             "SELECT doc_key, lang, catalog, relate_document, title, file_name, "
             "updated_date, display_update_time, content_hash, local_path, url, "
-            "last_synced FROM docs WHERE doc_key=?",
+            "last_synced, kit, ide FROM docs WHERE doc_key=?",
             (doc_key,),
         )
         row = cur.fetchone()
@@ -144,7 +168,7 @@ class IndexDB:
             return None
         cols = ["doc_key", "lang", "catalog", "relate_document", "title",
                 "file_name", "updated_date", "display_update_time", "content_hash",
-                "local_path", "url", "last_synced"]
+                "local_path", "url", "last_synced", "kit", "ide"]
         return dict(zip(cols, row))
 
     def get_all_keys(self) -> set[str]:
@@ -155,19 +179,20 @@ class IndexDB:
         self._conn.execute(
             """INSERT INTO docs (doc_key, lang, catalog, relate_document, title,
                file_name, updated_date, display_update_time, content_hash,
-               local_path, url, last_synced)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+               local_path, url, last_synced, kit, ide)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(doc_key) DO UPDATE SET
                  title=excluded.title, file_name=excluded.file_name,
                  updated_date=excluded.updated_date,
                  display_update_time=excluded.display_update_time,
                  content_hash=excluded.content_hash,
                  local_path=excluded.local_path,
-                 url=excluded.url, last_synced=excluded.last_synced""",
+                 url=excluded.url, last_synced=excluded.last_synced,
+                 kit=excluded.kit, ide=excluded.ide""",
             (d["doc_key"], d["lang"], d["catalog"], d["relate_document"], d.get("title"),
              d.get("file_name"), d.get("updated_date"), d.get("display_update_time"),
              d.get("content_hash"), d.get("local_path"), d.get("url"),
-             d.get("last_synced")),
+             d.get("last_synced"), d.get("kit"), d.get("ide")),
         )
 
     def delete_doc(self, doc_key: str):
@@ -456,3 +481,51 @@ class IndexDB:
     def count_subscribers(self) -> int:
         return self._conn.execute(
             "SELECT COUNT(*) FROM subscribers WHERE status='active'").fetchone()[0]
+
+    # ---- 用户（GitCode OAuth 登录）----
+    _USER_COLS = ("id", "gitcode_id", "login", "name", "avatar_url", "email",
+                  "created_at", "last_login_at")
+
+    def _row_to_user(self, row) -> dict | None:
+        return dict(zip(self._USER_COLS, row)) if row else None
+
+    def upsert_user(self, profile: dict) -> dict | None:
+        """按 gitcode_id 插入或更新登录用户，返回库中记录（dict）。
+
+        created_at 仅首次写入；每次登录刷新 login/name/avatar_url/email 与 last_login_at。
+        """
+        gid = str(profile.get("gitcode_id") or "").strip()
+        if not gid:
+            return None
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self._exec_retry(
+            "INSERT INTO users (gitcode_id, login, name, avatar_url, email,"
+            " created_at, last_login_at) VALUES (?,?,?,?,?,?,?)"
+            " ON CONFLICT(gitcode_id) DO UPDATE SET"
+            " login=excluded.login, name=excluded.name,"
+            " avatar_url=excluded.avatar_url, email=excluded.email,"
+            " last_login_at=excluded.last_login_at",
+            (gid, profile.get("login") or "", profile.get("name") or "",
+             profile.get("avatar_url") or "", profile.get("email") or "",
+             now, now))
+        self.commit()
+        return self.get_user(gid)
+
+    def get_user(self, gitcode_id: str) -> dict | None:
+        """按 gitcode_id 取用户；不存在返回 None。"""
+        row = self._conn.execute(
+            "SELECT id, gitcode_id, login, name, avatar_url, email, created_at,"
+            " last_login_at FROM users WHERE gitcode_id=?",
+            (str(gitcode_id or ""),)).fetchone()
+        return self._row_to_user(row)
+
+    def get_user_by_id(self, user_id: int) -> dict | None:
+        """按本地自增 id 取用户；不存在返回 None。"""
+        row = self._conn.execute(
+            "SELECT id, gitcode_id, login, name, avatar_url, email, created_at,"
+            " last_login_at FROM users WHERE id=?",
+            (user_id,)).fetchone()
+        return self._row_to_user(row)
+
+    def count_users(self) -> int:
+        return self._conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]

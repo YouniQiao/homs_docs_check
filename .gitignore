@@ -41,3 +41,5 @@ nohup.out
 sysmerge/ignore.db
 sysmerge/ignore.db-*
 sysmerge/kit_map.json
+backups/
+.auth.env

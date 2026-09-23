@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import hashlib
+import json
 import re
 import sys
 import threading
@@ -69,6 +70,40 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
+# ── Kit / IDE 分组映射（由 sysmerge/kit_map.py 从目录树推导，只读）────────────
+# 惰性加载一次，供 store_document 写入新文档时带上 kit/ide；映射文件缺失或损坏
+# 时退化为空表（新文档 kit/ide 写 NULL），绝不影响同步主流程。
+_KIT_IDE_LOCK = threading.Lock()
+_KIT_IDE_MAPS: tuple[dict, dict] | None = None
+
+KIT_MAP_PATH = BASE_DIR / "sysmerge" / "kit_map.v2.json"
+IDE_MAP_PATH = BASE_DIR / "sysmerge" / "ide_map.json"
+
+
+def _load_kit_ide_maps() -> tuple[dict, dict]:
+    """返回 ({doc_key: kit}, {doc_key: ide})；只加载一次（线程安全）。"""
+    global _KIT_IDE_MAPS
+    if _KIT_IDE_MAPS is None:
+        with _KIT_IDE_LOCK:
+            if _KIT_IDE_MAPS is None:
+                maps = []
+                for path in (KIT_MAP_PATH, IDE_MAP_PATH):
+                    try:
+                        with open(path, encoding="utf-8") as f:
+                            maps.append(json.load(f))
+                    except (OSError, ValueError) as e:
+                        print(f"   ⚠️  Kit/IDE 映射读取失败 {path.name}: {e}", flush=True)
+                        maps.append({})
+                _KIT_IDE_MAPS = (maps[0], maps[1])
+    return _KIT_IDE_MAPS
+
+
+def lookup_kit_ide(doc_key: str) -> tuple[str | None, str | None]:
+    """按 doc_key 查 (kit, ide_group)；查不到为 None（写库即 NULL）。"""
+    kit_map, ide_map = _load_kit_ide_maps()
+    return kit_map.get(doc_key), ide_map.get(doc_key)
+
+
 def doc_url(lang: str, catalog: str, file_name: str) -> str:
     return f"https://developer.huawei.com/consumer/{lang}/doc/{catalog}/{file_name}"
 
@@ -101,6 +136,8 @@ def store_document(doc: dict, config: dict, value: dict) -> dict | None:
     lang = doc["lang"]
     catalog = doc["catalog"]
     rel = doc["relate_document"]
+    doc_key = f"{lang}|{catalog}|{rel}"
+    kit, ide = lookup_kit_ide(doc_key)
 
     doc_dir = BASE_DIR / config["data_dir"] / lang / catalog
     doc_dir.mkdir(parents=True, exist_ok=True)
@@ -125,7 +162,7 @@ def store_document(doc: dict, config: dict, value: dict) -> dict | None:
     md_path.write_text(markdown, encoding="utf-8")
 
     return {
-        "doc_key": f"{lang}|{catalog}|{rel}",
+        "doc_key": doc_key,
         "lang": lang,
         "catalog": catalog,
         "relate_document": rel,
@@ -137,6 +174,8 @@ def store_document(doc: dict, config: dict, value: dict) -> dict | None:
         "local_path": str(md_path.relative_to(BASE_DIR)),
         "url": doc_url(lang, catalog, file_name),
         "last_synced": datetime.now().isoformat(timespec="seconds"),
+        "kit": kit,
+        "ide": ide,
         "img_count": img_count,
         "anchor_ids": anchor_ids,
     }

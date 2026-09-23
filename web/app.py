@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from subscribe import register_subscribe  # noqa: E402
 from a2a_view import register_a2a  # noqa: E402
 from ignored import register_ignored  # noqa: E402
 from sysmerge_pages import register_sysmerge  # noqa: E402
+from auth import auth_enabled, current_user, load_auth_env, register_auth  # noqa: E402
 
 DB_PATH = str(BASE_DIR / "index.db")
 
@@ -29,9 +31,15 @@ DB_PATH = str(BASE_DIR / "index.db")
 def create_app() -> Flask:
     app = Flask(__name__)
 
+    # session 密钥：从 .auth.env 的 FLASK_SECRET_KEY 读；缺失时用临时随机值兜底
+    # （登录功能此时会自动禁用，这里只是保证 session 不会因缺 key 抛 500）。
+    _auth_env = load_auth_env()
+    app.secret_key = _auth_env.get("FLASK_SECRET_KEY") or os.urandom(32)
+
     @app.context_processor
     def inject_nav():
-        return {"nav_modules": nav_modules(), "home_groups": home_groups()}
+        return {"nav_modules": nav_modules(), "home_groups": home_groups(),
+                "current_user": current_user(), "auth_enabled": auth_enabled()}
 
     @app.route("/media/<path:filepath>")
     def media(filepath: str):
@@ -46,6 +54,7 @@ def create_app() -> Flask:
     register_a2a(app, DB_PATH)
     register_ignored(app, DB_PATH)
     register_sysmerge(app, DB_PATH)
+    register_auth(app, DB_PATH)
 
     @app.route("/")
     def home():
