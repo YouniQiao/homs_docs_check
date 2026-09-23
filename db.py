@@ -502,8 +502,10 @@ class IndexDB:
             "INSERT INTO users (gitcode_id, login, name, avatar_url, email,"
             " created_at, last_login_at) VALUES (?,?,?,?,?,?,?)"
             " ON CONFLICT(gitcode_id) DO UPDATE SET"
-            " login=excluded.login, name=excluded.name,"
-            " avatar_url=excluded.avatar_url, email=excluded.email,"
+            " login=excluded.login,"
+            " name=COALESCE(NULLIF(excluded.name,''), users.name),"
+            " avatar_url=COALESCE(NULLIF(excluded.avatar_url,''), users.avatar_url),"
+            " email=COALESCE(NULLIF(excluded.email,''), users.email),"
             " last_login_at=excluded.last_login_at",
             (gid, profile.get("login") or "", profile.get("name") or "",
              profile.get("avatar_url") or "", profile.get("email") or "",
