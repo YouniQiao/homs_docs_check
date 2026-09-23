@@ -319,8 +319,26 @@ def register_module(app, db_path: str, module: dict):
                 run = module["runs_provider"](db, [run])[0]
             items = db.get_items(run_id) if run else []
             mk = active_tab["key"] if (tabs and active_tab) else key
+            # 页签视图：顶部汇总改用「当前页签（模块）」的数据（run 摘要里带 {模块}_ 前缀时），
+            # 与「按模块解决情况」卡片口径一致（解决率分母剔除已忽略）。
+            summary = (run or {}).get("summary") or {}
+            if tabs and active_tab and isinstance(summary, dict) and f"{active_tab['key']}_total" in summary:
+                tmk = active_tab["key"]
+                n = summary.get(f"{tmk}_total", 0)
+                r = summary.get(f"{tmk}_resolved", 0)
+                ig = summary.get(f"{tmk}_ignored", 0)
+                summary = {**summary,
+                           "total": n, "resolved": r,
+                           "still": summary.get(f"{tmk}_still", 0),
+                           "gone": summary.get(f"{tmk}_gone", 0),
+                           "items": summary.get(f"{tmk}_items", 0),
+                           "ignored": ig,
+                           "rate": round(r * 100 / ((n - ig) or 1), 1)}
             has_ign = ignores.supports(mk)
             ig_rules = ignores.active_map(db) if has_ign else {}
+            if has_ign:
+                # 顶部「已忽略」= 该模块当前生效的忽略规则数（展示端口径，与「已忽略问题」页一致）
+                summary = {**summary, "ignored": len(db.list_ignores(mk, active_only=True))}
         finally:
             db.close()
         # 忽略：只做展示端过滤（run 数据不动 → 恢复即时生效）。
@@ -339,6 +357,9 @@ def register_module(app, db_path: str, module: dict):
                 tk = it["detail"].get(tab_field)
                 tab_counts[tk] = tab_counts.get(tk, 0) + 1
             items = [it for it in items if it["detail"].get(tab_field) == active_tab["key"]]
+        # 顶部「待处理明细」= 当前页签在【忽略/显示过滤之后】的条目数，与页签数字、明细列表完全一致
+        if tabs and active_tab:
+            summary = {**summary, "items": tab_counts.get(active_tab["key"], 0)}
         filter_state = {}
         if module.get("item_visible") and not tabs and show_mode == "default":
             items = [it for it in items if module["item_visible"](it)]
@@ -356,6 +377,7 @@ def register_module(app, db_path: str, module: dict):
         from urllib.parse import urlencode
         q = {k: v for k, v in request.args.items() if k != "page"}
         return render_template("task_detail.html", module=module, run=run,
+                               summary=summary,
                                items=items_page, badge_map=bm, multi_badge=multi_badge,
                                tabs=tabs, active_tab=active_tab, tab_counts=tab_counts,
                                filters=filters,

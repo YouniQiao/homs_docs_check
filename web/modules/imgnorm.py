@@ -67,7 +67,7 @@ def _imgnorm_context(db) -> dict:
 IMGNORM_MODULE = {
     "key": "imgnorm",
     "name": "图片内容规范检查",
-    "nav_name": "图片内容规范检查",  # 顶栏菜单名（用户 2026-09 定）
+    "in_nav": False,               # 用户 2026-09：从顶栏菜单 + 首页入口移除（功能保留，可直连 /imgnorm/）
     "icon": "🖼️",
     "debug": True,   # 调试中：导航/标题/首页卡片显示「调试中」标签
     "description": "基于已识别的图片文字，检查术语规范、敏感信息、占位残留等问题",

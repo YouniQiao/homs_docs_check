@@ -48,9 +48,11 @@
 {% if run %}
 <p class="subtitle mono">{{ run.started_at|fmt_time }} → {{ run.finished_at|fmt_time or '进行中' }}</p>
 {% set sum_fields = module.detail_summary_fields or module.summary_fields %}
+{# 页签视图：framework 会传当前页签（模块）的汇总；没有则回落到整次 run 的汇总 #}
+{% set _sum = summary if summary is defined and summary else run.summary %}
 <div class="detail-summary">
     {% for f, label in sum_fields %}
-    {% set v = run.summary.get(f) %}
+    {% set v = _sum.get(f) %}
     <div class="stat-card">
         <div class="num">{{ "{:,}".format(v) if v is number else (v if v is not none else "—") }}</div>
         <div class="label">{{ label }}</div>

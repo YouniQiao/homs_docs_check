@@ -24,8 +24,10 @@ DB_PATH = str(BASE_DIR / "index.db")
 MODULE = next((m for m in EXTRA_MODULES if m["key"] == "ignored"), {"key": "ignored",
                                                                     "name": "已忽略问题"})
 
-TABS = [("all", "全部"), ("linkcheck", "链接检查"), ("encheck", "英文文档检查"),
-        ("ocr", "图片 OCR 检查"), ("imgnorm", "图片内容规范检查")]
+# 页签与首页「每日增量内容检查」同名同序（图片 OCR 检查 → 英文文档检查 → 链接健康检查）
+# imgnorm 已从入口移除，页签也不再列（其忽略记录仍可在「全部」里看到）
+TABS = [("all", "全部"), ("ocr", "图片 OCR 检查"), ("encheck", "英文文档检查"),
+        ("linkcheck", "链接健康检查")]
 
 
 def _client_ip() -> str:

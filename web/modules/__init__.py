@@ -21,7 +21,7 @@ _ALL_MODULES = MODULES + EXTRA_MODULES
 
 # 顶栏菜单顺序（可与 MODULES 注册顺序不同）：图片规范紧跟图片 OCR；未列出的模块按注册顺序追加末尾。
 # 注意：顶栏只列 MODULES（EXTRA_MODULES 如「已忽略问题」只在首页出现，不进菜单）。
-NAV_ORDER = ["sync", "ocr", "imgnorm", "encheck", "linkcheck", "recheck"]
+NAV_ORDER = ["sync", "ocr", "encheck", "linkcheck", "imgnorm", "recheck"]
 
 
 def nav_modules() -> list[dict]:
@@ -45,7 +45,7 @@ HOME_GROUPS = [
     # 顺序：全量问题总览放最前（同事最常看「当前有哪些问题要处理」）
     ("全量问题总览", ["recheck", "ignored"]),
     ("数据同步", ["sync"]),
-    ("日常检查", ["ocr", "imgnorm", "encheck", "linkcheck"]),
+    ("每日增量内容检查", ["ocr", "encheck", "linkcheck"]),
     # 专项整改（用户 2026-09 新增）：后续放入的卡片按以下约定——
     #   ① 不进顶栏菜单（模块标 in_nav: False，或放 EXTRA_MODULES）
     #   ② 不接定时任务（不加 cron、不进日报）
@@ -63,7 +63,9 @@ def home_groups() -> list[tuple[str, list[dict]]]:
         mods = [by_key[k] for k in keys if k in by_key]
         out.append((title, mods))
         listed.update(k for k in keys if k in by_key)
-    rest = [m for m in _ALL_MODULES if m["key"] not in listed]
+    # 未列出的模块兜底进「其他」；标了 in_nav: False 的（如 imgnorm）视为“已从入口移除”，不再兜底
+    rest = [m for m in _ALL_MODULES
+            if m["key"] not in listed and m.get("in_nav") is not False]
     if rest:
         out.append(("其他", rest))
     return out

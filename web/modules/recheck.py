@@ -87,7 +87,7 @@ def _recheck_context(db) -> dict:
             "p_still": round(st * 100 / denom, 1),
             "issue_count": agg.get(mk, {}).get("item_count", 0),
         })
-    per_module.sort(key=lambda x: x["total"], reverse=True)
+    # 顺序跟 MODULES 走（与首页「每日增量内容检查」一致），不按总量排
     return {"recheck_stats": stats, "recheck_modules": per_module,
             "recheck_run_id": latest_run_id}
 
@@ -114,9 +114,11 @@ RECHECK_MODULE = {
     "item_columns": TABS[0]["item_columns"],     # 兜底（有 tabs 时以页签为准）
     "summary_fields": [("total", "复核项"), ("resolved", "已解决"), ("still", "仍存在"),
                        ("gone", "已失效"), ("rate", "解决率(%)")],
-    "detail_summary_fields": [("total", "复核项"), ("resolved", "已解决"),
-                              ("still", "仍存在"), ("gone", "已失效"),
-                              ("rate", "解决率(%)")],
+    # 顶部汇总：前 5 个是「问题点/处」口径（与卡片、各模块页一致），最后「待处理明细」是「文档/篇」口径
+    "detail_summary_fields": [("total", "复核项(处)"), ("resolved", "已解决(处)"),
+                              ("still", "仍存在(处)"), ("ignored", "已忽略(处)"),
+                              ("gone", "已失效(处)"), ("rate", "解决率(%)"),
+                              ("items", "待处理明细(篇)")],
     "filters": [],
     "badge_map": {},
     "context_provider": _recheck_context,

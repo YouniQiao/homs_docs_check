@@ -49,9 +49,10 @@ DATA_DIR = BASE_DIR / "data"
 
 # 复核范围：imgnorm（图片内容规范）暂不参与（用户要求），代码保留在 ALL_MODULES 里备启用
 ALL_MODULES = ("linkcheck", "encheck", "ocr", "imgnorm")
-MODULES = ("linkcheck", "encheck", "ocr")
-MODULE_LABEL = {"linkcheck": "链接检查", "encheck": "英文文档检查",
-                "ocr": "图片中文检查", "imgnorm": "图片内容规范检查"}
+# 顺序与首页「每日增量内容检查」分组一致（图片 OCR → 英文文档 → 链接健康；imgnorm 未参与）
+MODULES = ("ocr", "encheck", "linkcheck")
+MODULE_LABEL = {"linkcheck": "链接健康检查", "encheck": "英文文档检查",
+                "ocr": "图片 OCR 检查", "imgnorm": "图片内容规范检查"}
 _BUCKET_LABEL = {"blocked": "被拒", "server": "服务端异常", "unreachable": "不可达"}
 
 IMG_RE = re.compile(r"!\[[^\]]*\]\(images/([^)\s\"]+)")
