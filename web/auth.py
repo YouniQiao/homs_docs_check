@@ -29,6 +29,7 @@ from flask import (Blueprint, current_app, redirect, render_template, request,
                    session)
 
 from db import IndexDB
+from me_pages import me_context
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AUTH_ENV_PATH = BASE_DIR / ".auth.env"
@@ -271,13 +272,16 @@ def register_auth(app, db_path: str):
                 return _notice("登录功能尚未配置，暂时无法查看「我的」页面。")
             return redirect("/auth/login?next=/me")
         profile = None
-        if user.get("gitcode_id"):
-            db = IndexDB(db_path)
-            try:
+        db = IndexDB(db_path)
+        try:
+            if user.get("gitcode_id"):
                 profile = db.get_user(user["gitcode_id"])
-            finally:
-                db.close()
-        return render_template("me.html", current_user=user, profile=profile, notice=None)
+            # 关注领域配置（P2a）：区选项 + 已选标签（选项来自 docs 表 DISTINCT）
+            areas_ctx = me_context(db, user)
+        finally:
+            db.close()
+        return render_template("me.html", current_user=user, profile=profile,
+                               notice=None, **areas_ctx)
 
     app.register_blueprint(auth_bp)
     return auth_bp

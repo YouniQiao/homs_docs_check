@@ -31,6 +31,71 @@
     .me-note { padding: 12px 16px; border-radius: 9px; background: #fdf0e3;
                color: #c2570a; font-size: 13px; margin-bottom: 16px; }
     .me-empty { color: var(--muted); font-size: 13px; padding: 18px 0 4px; }
+    /* ── 关注领域配置（P2a）── */
+    .me-badge { font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+                background: var(--primary-soft); color: var(--primary); margin-left: 6px;
+                vertical-align: middle; }
+    .me-flash { padding: 10px 14px; border-radius: 9px; font-size: 13px; margin: 12px 0 0; }
+    .me-flash.ok { background: #e5f6ec; color: var(--added); }
+    .me-flash.warn { background: #fdeaea; color: var(--deleted); }
+    .me-flash.info { background: var(--primary-soft); color: var(--primary); }
+    .me-dim { border-top: 1px dashed var(--border); padding: 16px 0 6px; }
+    .me-dim:first-of-type { border-top: none; padding-top: 10px; }
+    .me-dim-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .me-dim-h .t { font-size: 14px; font-weight: 600; }
+    .me-dim-h .n { font-size: 12px; color: var(--muted); }
+    .me-dim-hint { font-size: 12px; color: var(--muted); margin: 3px 0 10px; }
+    .me-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;
+               align-items: center; }
+    .me-tag-form { display: inline; margin: 0; }
+    .me-tag { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px 5px 13px;
+              border: 1px solid #c9d6f5; background: var(--primary-soft); color: var(--primary);
+              border-radius: 999px; font-size: 12.5px; font-family: inherit;
+              cursor: pointer; max-width: 100%; }
+    .me-tag:hover { background: #e0e8fd; border-color: var(--primary); }
+    .me-tag .x { font-size: 14px; line-height: 1; opacity: .65; flex: 0 0 auto; }
+    .me-tag-ph { font-size: 12.5px; color: var(--muted); }
+    .me-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .me-add select { padding: 6px 10px; border: 1px solid var(--border); border-radius: 7px;
+                     font-size: 13px; background: #fff; max-width: 360px; font-family: inherit; }
+    .me-add select:focus { outline: none; border-color: var(--primary);
+                           box-shadow: 0 0 0 3px rgba(47,84,208,.12); }
+    .me-add button { padding: 7px 15px; border: none; border-radius: 8px;
+                     background: var(--primary); color: #fff; font-size: 13px;
+                     font-family: inherit; cursor: pointer; }
+    .me-add button:hover { opacity: .9; }
+    /* ── 口径预览（📐）── */
+    .me-logic-switch { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+                       margin: 12px 0 2px; }
+    .me-logic-lbl { font-size: 12.5px; color: var(--muted); }
+    .me-logic-form { display: inline; margin: 0; }
+    .me-logic-btn { padding: 6px 14px; border: 1px solid var(--border); background: #fff;
+                    border-radius: 999px; font-size: 13px; font-family: inherit;
+                    color: var(--text); cursor: pointer; }
+    .me-logic-btn:hover { background: #f7f9fc; }
+    .me-logic-btn.on { background: var(--primary); border-color: var(--primary);
+                       color: #fff; font-weight: 600; }
+    .me-cmp { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; align-items: stretch; }
+    .me-cmp-col { flex: 1 1 300px; min-width: 258px; border: 1px solid var(--border);
+                  border-radius: 10px; padding: 13px 16px; background: #fbfcff; }
+    .me-cmp-col.empty { background: #fffafa; border-color: #f2c9c9; }
+    .me-cmp-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .me-cmp-tag { font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
+    .me-cmp-tag.union { background: var(--primary-soft); color: var(--primary); }
+    .me-cmp-tag.intersection { background: #fdf0e3; color: #c2570a; }
+    .me-cmp-name { font-size: 14px; font-weight: 600; }
+    .me-cmp-op { font-size: 15px; color: var(--muted); }
+    .me-cmp-n { margin-left: auto; font-size: 15px; font-weight: 700; color: var(--primary); }
+    .me-cmp-col.empty .me-cmp-n { color: var(--deleted); }
+    .me-cmp-sub { font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
+    .me-samples { list-style: none; margin: 0; padding: 0; }
+    .me-samples li { padding: 7px 0; border-top: 1px dashed var(--border); font-size: 13px; }
+    .me-samples .t { display: block; line-height: 1.5; }
+    .me-samples .m { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+    .me-cmp-none { font-size: 12.5px; color: var(--muted); padding: 6px 0 2px; }
+    .me-cmp-foot { font-size: 12px; color: var(--muted); margin-top: 12px; line-height: 1.85; }
+    .me-warn { margin-top: 12px; padding: 10px 14px; border-radius: 9px;
+               background: #fdeaea; color: var(--deleted); font-size: 13px; line-height: 1.75; }
 </style>
 
 <div class="me-wrap">
@@ -63,10 +128,119 @@
     </div>
 
     <div class="me-card">
-        <h2>🎯 关注领域<span class="me-soon">后续阶段</span></h2>
-        <p class="me-hint">选定你关注的 Kit / 目录 / 语言后，这里会汇总对应的文档问题，
-        并在日报里只推送与你相关的部分。</p>
-        <div class="me-empty">暂未开放，敬请期待。</div>
+        <h2>🎯 关注领域{% if area_total %}<span class="me-badge">已关注 {{ area_total }} 项</span>{% endif %}</h2>
+        <p class="me-hint">选定你关注的文档类型 / Kit / IDE 分组 / 检查模块（可多选）。
+        点标签上的 × 取消，下拉框选好点「＋ 添加」，保存即生效。后续「我的问题列表」
+        与日报只推送这些范围内的内容。</p>
+
+        {% with msgs = get_flashed_messages(with_categories=true) %}
+        {% if msgs %}{% for cat, m in msgs %}<div class="me-flash {{ cat }}">{{ m }}</div>{% endfor %}{% endif %}
+        {% endwith %}
+
+        {% for dim in dims %}
+        {% set sel = areas.get(dim) or [] %}
+        {% set opts = area_options.get(dim) or [] %}
+        <div class="me-dim">
+            <div class="me-dim-h">
+                <span class="t">{{ dim_labels[dim] }}</span>
+                <span class="n">已选 {{ sel|length }} 项{% if opts %} · 可选 {{ opts|length }} 项{% endif %}</span>
+            </div>
+            <div class="me-dim-hint">{{ dim_hints[dim] }}</div>
+            <div class="me-tags">
+                {% for v in sel %}
+                <form class="me-tag-form" method="post" action="/me/areas">
+                    <input type="hidden" name="action" value="remove">
+                    <input type="hidden" name="dim" value="{{ dim }}">
+                    <input type="hidden" name="value" value="{{ v }}">
+                    <button class="me-tag" type="submit" title="点击取消关注">
+                        {{ labels.get(dim, {}).get(v, v) }}<span class="x">×</span>
+                    </button>
+                </form>
+                {% else %}
+                <span class="me-tag-ph">尚未选择</span>
+                {% endfor %}
+            </div>
+            {% set ns = namespace(avail=0) %}
+            {% for v, lbl, cnt in opts %}{% if v not in sel %}{% set ns.avail = ns.avail + 1 %}{% endif %}{% endfor %}
+            {% if ns.avail %}
+            <form class="me-add" method="post" action="/me/areas">
+                <input type="hidden" name="action" value="add">
+                <input type="hidden" name="dim" value="{{ dim }}">
+                <select name="value" aria-label="选择要关注的{{ dim_labels[dim] }}">
+                    {% for v, lbl, cnt in opts %}{% if v not in sel %}
+                    <option value="{{ v }}">{{ lbl }}{% if cnt %}（{{ cnt }} 篇）{% endif %}</option>
+                    {% endif %}{% endfor %}
+                </select>
+                <button type="submit">＋ 添加</button>
+            </form>
+            {% else %}
+            <div class="me-tag-ph">该维度已全部关注。</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="me-card">
+        <h2>📐 口径预览<span class="me-badge">{{ logic_labels.get(area_logic, area_logic) }} 生效</span></h2>
+        <p class="me-hint">{{ logic_desc }}</p>
+
+        <div class="me-logic-switch">
+            <span class="me-logic-lbl">口径：</span>
+            {% for k in ['union', 'intersection'] %}
+            <form class="me-logic-form" method="post" action="/me/logic">
+                <input type="hidden" name="logic" value="{{ k }}">
+                <button class="me-logic-btn{% if area_logic == k %} on{% endif %}" type="submit"
+                        title="保存后生效（只存开关，问题列表在后续阶段）">{% if k == 'union' %}甲 · 并集{% else %}乙 · 交集{% endif %}{% if area_logic == k %} ✓{% endif %}</button>
+            </form>
+            {% endfor %}
+            <span class="me-logic-lbl">{% if logic_updated_at %}最近保存 {{ logic_updated_at }}{% else %}尚未保存过，默认并集{% endif %}</span>
+        </div>
+
+        {% if not preview %}
+        <div class="me-cmp-foot">口径预览暂不可用（统计出错），不影响上面的关注领域配置。</div>
+        {% else %}
+        {% if not preview.has_doc_dims %}
+        <div class="me-warn" style="background:#fdf0e3;color:#c2570a;">ℹ️ 未设关注领域，默认全部——全站 {{ preview.total_docs_fmt }} 篇文档都在范围内（此时甲、乙结果相同）。选上「文档类型 / Kit / IDE 分组」后，这里会分别算出两种口径的数字。</div>
+        {% endif %}
+        <div class="me-cmp">
+            {% for k in ['union', 'intersection'] %}
+            {% set p = preview[k] %}
+            <div class="me-cmp-col{% if k == 'intersection' and p.count == 0 %} empty{% endif %}">
+                <div class="me-cmp-h">
+                    <span class="me-cmp-tag {{ k }}">{% if k == 'union' %}甲{% else %}乙{% endif %}</span>
+                    <span class="me-cmp-name">{% if k == 'union' %}并集{% else %}交集{% endif %}</span>
+                    <span class="me-cmp-op">{% if k == 'union' %}∪{% else %}∩{% endif %}</span>
+                    <span class="me-cmp-n">{{ '并集' if k == 'union' else '交集' }} → {{ p.count_fmt }} 篇</span>
+                </div>
+                <div class="me-cmp-sub">{% if k == 'union' %}命中任一已选维度即算（范围宽）{% else %}需同时命中所有已选维度（范围窄）{% endif %}</div>
+                {% if p.samples %}
+                <ul class="me-samples">
+                    {% for s in p.samples %}
+                    <li>
+                        <span class="t">{{ s.title }}</span>
+                        <span class="m">catalog: {{ s.catalog }}{% if s.kit %} · Kit: {{ s.kit }}{% endif %}{% if s.ide %} · IDE: {{ s.ide }}{% endif %}{% if not (s.kit or s.ide) %} · Kit/IDE: 空{% endif %}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="me-cmp-none">没有命中的文档（示例为空）。</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% if preview.empty_intersection %}
+        <div class="me-warn">⚠️ 交集为空——这两类互斥<br>
+            已选维度之间没有一篇文档同时满足（Kit 只覆盖 harmonyos-guides / harmonyos-references，
+            IDE 分组只覆盖 harmonyos-guides，两者几乎不重叠）。此时若选「乙 · 交集」，
+            「我的问题列表」将没有内容。</div>
+        {% endif %}
+        <div class="me-cmp-foot">
+            {% if preview.has_doc_dims %}本页按已选维度计算：{% for dim in ['catalog', 'kit', 'ide'] %}{{ dim_labels[dim] }} {{ (areas.get(dim) or []) | length }} 项{% if not loop.last %} · {% endif %}{% endfor %}（未选的维度不参与口径，否则交集恒为空）。
+            {% else %}未选任何文档维度，两种口径都按「全部文档」（{{ preview.total_docs_fmt }} 篇）计。
+            {% endif %}
+            {% if preview.modules %}检查模块已选 {{ preview.modules | length }} 项——它不是文档属性、无法按 doc_key 判定，因此不计入上面的文档数，后续「我的问题列表」按它筛问题类型。{% else %}尚未选择检查模块。{% endif %}
+        </div>
+        {% endif %}
     </div>
 
     <div class="me-card">

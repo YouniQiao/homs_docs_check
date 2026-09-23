@@ -24,6 +24,7 @@ from a2a_view import register_a2a  # noqa: E402
 from ignored import register_ignored  # noqa: E402
 from sysmerge_pages import register_sysmerge  # noqa: E402
 from auth import auth_enabled, current_user, load_auth_env, register_auth  # noqa: E402
+from me_pages import register_me  # noqa: E402
 
 DB_PATH = str(BASE_DIR / "index.db")
 
@@ -55,6 +56,7 @@ def create_app() -> Flask:
     register_ignored(app, DB_PATH)
     register_sysmerge(app, DB_PATH)
     register_auth(app, DB_PATH)
+    register_me(app, DB_PATH)
 
     @app.route("/")
     def home():

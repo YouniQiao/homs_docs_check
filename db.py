@@ -92,6 +92,29 @@ CREATE TABLE IF NOT EXISTS users (
     last_login_at TEXT
 );
 
+-- 关注领域（P2a：「我的」页面配置）：4 个维度 catalog(文档类型) / kit / ide / module。
+-- 只存用户显式选中的值；忽略与「已处理」都是全局的，不按用户区分（用户口径 2026-09）。
+-- UNIQUE(user_id, dim, value) 保证同一维度不重复；删除即物理删（无恢复语义）。
+CREATE TABLE IF NOT EXISTS user_areas (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,       -- users.id
+    dim        TEXT NOT NULL,          -- catalog / kit / ide / module
+    value      TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(user_id, dim, value)
+);
+CREATE INDEX IF NOT EXISTS idx_user_areas_user ON user_areas(user_id, dim);
+
+-- 口径偏好（/me「📐 口径预览」的开关）：一用户一行，先只存不算。
+-- union        甲（并集）：命中任一已选维度的文档即算「我的」
+-- intersection 乙（交集）：需同时命中所有已选维度的文档才算「我的」
+-- 「我的问题列表」（P2b）将按这里选定的口径取数；本阶段只做预览与存储。
+CREATE TABLE IF NOT EXISTS user_prefs (
+    user_id    INTEGER PRIMARY KEY,        -- users.id（一用户一行）
+    area_logic TEXT NOT NULL DEFAULT 'union',
+    updated_at TEXT
+);
+
 -- 站点锚点（源 HTML 的 id=，原样保存）：链接锚点校验的权威依据。
 -- md 标题反推不可靠：站点锚点是 HTML 里的 id，可能挂在 <div class="section"> 上、
 -- 且文字可能与当前标题不一致（标题改过 / id 建库时生成）。同步时顺手写入。
@@ -120,6 +143,28 @@ CREATE TABLE IF NOT EXISTS ignores (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ignores_active
     ON ignores(module_key, target, doc_key, kind) WHERE restored_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_ignores_lookup ON ignores(module_key, target);
+
+-- 已处理记录（P2b「我的问题列表」用）：问题列表的第 4 个状态，与 ignores 并列、全局不分用户。
+-- 「已处理」= 同事已修/已知悉，不算「仍存在」；不计入问题总数。
+-- target：linkcheck=链接 URL；encheck=doc_key；ocr/imgnorm=图片相对路径；sysmerge=关键词。
+-- doc_key：仅 linkcheck 的「仅本文档」用；'' = 不限文档（全局）。
+-- 恢复不物理删除（restored_at 标记），保留历史；无鉴权，用 *_by 留痕。
+CREATE TABLE IF NOT EXISTS handled (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    module_key  TEXT NOT NULL,
+    target      TEXT NOT NULL,
+    doc_key     TEXT NOT NULL DEFAULT '',
+    kind        TEXT NOT NULL,
+    note        TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL,
+    created_by  TEXT NOT NULL DEFAULT '',
+    restored_at TEXT,
+    restored_by TEXT NOT NULL DEFAULT ''
+);
+-- 与 ignores 同款：同一 (模块,目标,文档,类型) 只允许一条生效记录，mark_handled 幂等。
+CREATE UNIQUE INDEX IF NOT EXISTS idx_handled_active
+    ON handled(module_key, target, doc_key, kind) WHERE restored_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_handled_lookup ON handled(module_key, target);
 """
 
 
@@ -531,3 +576,126 @@ class IndexDB:
 
     def count_users(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+
+    # ── 关注领域（P2a；按用户，4 维：catalog / kit / ide / module）──────────
+    _AREA_COLS = ("id", "user_id", "dim", "value", "created_at")
+
+    def list_user_areas(self, user_id: int) -> list[dict]:
+        """某用户已选的关注领域；按 (维度, 取值) 排序。未选返回 []。"""
+        if not user_id:
+            return []
+        rows = self._conn.execute(
+            "SELECT id, user_id, dim, value, created_at FROM user_areas"
+            " WHERE user_id=? ORDER BY dim, value", (user_id,)).fetchall()
+        return [dict(zip(self._AREA_COLS, r)) for r in rows]
+
+    def add_user_area(self, user_id: int, dim: str, value: str) -> bool:
+        """新增关注项（幂等：同 (用户,维度,取值) 已存在则跳过）。返回是否新增。"""
+        if not user_id or not dim or not value:
+            return False
+        cur = self._exec_retry(
+            "INSERT OR IGNORE INTO user_areas (user_id, dim, value, created_at)"
+            " VALUES (?,?,?,?)",
+            (user_id, dim, value,
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        self.commit()
+        return bool(cur is not None and cur.rowcount)
+
+    def remove_user_area(self, user_id: int, dim: str, value: str) -> bool:
+        """删除关注项（物理删，无恢复语义）。返回是否删到。"""
+        if not user_id or not dim or not value:
+            return False
+        cur = self._exec_retry(
+            "DELETE FROM user_areas WHERE user_id=? AND dim=? AND value=?",
+            (user_id, dim, value))
+        self.commit()
+        return bool(cur is not None and cur.rowcount)
+
+    def count_user_areas(self, user_id: int) -> int:
+        return self._conn.execute(
+            "SELECT COUNT(*) FROM user_areas WHERE user_id=?",
+            (user_id,)).fetchone()[0]
+
+    # ── 口径偏好（/me「口径预览」开关；一用户一行，先只存不算）─────────────
+    AREA_LOGICS = ("union", "intersection")
+
+    def get_area_logic(self, user_id: int) -> str:
+        """用户选定的统计口径；未设置/取值异常一律回落 'union'（甲·并集）。"""
+        if not user_id:
+            return "union"
+        row = self._conn.execute(
+            "SELECT area_logic FROM user_prefs WHERE user_id=?",
+            (user_id,)).fetchone()
+        logic = (row[0] if row else "") or ""
+        return logic if logic in self.AREA_LOGICS else "union"
+
+    def set_area_logic(self, user_id: int, logic: str) -> bool:
+        """保存统计口径（UPSERT：一用户一行，重复保存即覆盖）。非法取值不写，返回 False。"""
+        if not user_id or logic not in self.AREA_LOGICS:
+            return False
+        cur = self._exec_retry(
+            "INSERT INTO user_prefs (user_id, area_logic, updated_at) VALUES (?,?,?)"
+            " ON CONFLICT(user_id) DO UPDATE SET"
+            " area_logic=excluded.area_logic, updated_at=excluded.updated_at",
+            (user_id, logic, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        self.commit()
+        return cur is not None
+
+    def get_area_logic_updated_at(self, user_id: int) -> str | None:
+        """口径开关最近保存时间（页面展示用）；未保存过返回 None。"""
+        if not user_id:
+            return None
+        row = self._conn.execute(
+            "SELECT updated_at FROM user_prefs WHERE user_id=?",
+            (user_id,)).fetchone()
+        return row[0] if row else None
+
+    # ── 已处理（P2b「我的问题列表」用；全局，不按用户区分）────────────────
+    _HANDLED_COLS = ("id", "module_key", "target", "doc_key", "kind", "note",
+                     "created_at", "created_by", "restored_at", "restored_by")
+
+    def mark_handled(self, module_key: str, target: str, kind: str, doc_key: str = "",
+                     note: str = "", created_by: str = "") -> bool:
+        """标记某条问题为「已处理」（幂等：同一生效记录不重复插入）。返回是否新增。"""
+        cur = self._exec_retry(
+            "INSERT OR IGNORE INTO handled"
+            " (module_key, target, doc_key, kind, note, created_at, created_by)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (module_key, target, doc_key or "", kind, note or "",
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S"), created_by or ""))
+        self.commit()
+        return bool(cur is not None and cur.rowcount)
+
+    def restore_handled(self, handled_id: int, restored_by: str = "") -> bool:
+        """撤销「已处理」（标记 restored_at，不物理删除）。返回是否改动。"""
+        cur = self._exec_retry(
+            "UPDATE handled SET restored_at=?, restored_by=?"
+            " WHERE id=? AND restored_at IS NULL",
+            (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), restored_by or "",
+             handled_id))
+        self.commit()
+        return bool(cur is not None and cur.rowcount)
+
+    def list_handled(self, module_key: str = None, active_only: bool = True) -> list[dict]:
+        """已处理记录（默认只看生效中的）；按 id 倒序。"""
+        sql = ("SELECT id, module_key, target, doc_key, kind, note, created_at,"
+               " created_by, restored_at, restored_by FROM handled")
+        where, params = [], []
+        if module_key:
+            where.append("module_key=?")
+            params.append(module_key)
+        if active_only:
+            where.append("restored_at IS NULL")
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY id DESC"
+        return [dict(zip(self._HANDLED_COLS, r))
+                for r in self._conn.execute(sql, params).fetchall()]
+
+    def active_handled_map(self) -> dict:
+        """生效中的已处理按模块归组 → {module_key: [{target,doc_key,kind}]}（匹配用）。"""
+        out: dict = {}
+        for r in self.list_handled(active_only=True):
+            out.setdefault(r["module_key"], []).append(
+                {"target": r["target"], "doc_key": r["doc_key"], "kind": r["kind"]})
+        return out
