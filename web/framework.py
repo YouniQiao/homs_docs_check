@@ -484,11 +484,13 @@ def register_module(app, db_path: str, module: dict):
 
     @bp.route("/run/<int:run_id>/export")
     def task_export(run_id):
-        """导出当前 run（配合当前筛选）为 CSV，Excel 可直接打开。"""
-        import csv
+        """导出当前 run（配合当前筛选）为 Excel(.xlsx)：表头底纹 + 冻结首行 + 自动筛选 + 自适应列宽。"""
         import io
 
         from flask import abort, send_file
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
 
         cols, bm, multi_badge, filters, tabs, active_tab, tab_field = _resolve_view(request.args)
         view_mod = {**module, "multi_badge": multi_badge, "badge_map": bm}
@@ -519,20 +521,44 @@ def register_module(app, db_path: str, module: dict):
         _fill_kit_options(filters, db_path, items)
         if filters:
             items, _ = _apply_filters(items, {"filters": filters}, request.args)
-        buf = io.StringIO()
-        w = csv.writer(buf)
-        w.writerow((["类型"] + (["已忽略"] if has_ign else [])
-                    + [lab for _, lab, _ in col_defs]))
+        # ── 写 xlsx ──
+        header = (["类型"] + (["已忽略"] if has_ign else [])
+                  + [lab for _, lab, _ in col_defs] + ["Kit", "分类"])
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f"{key}_run{run_id}"[:31]
+        ws.append(header)
         for it in items:
-            w.writerow([_type_labels(it, view_mod)]
-                       + ([it.get("n_ignored", 0)] if has_ign else [])
-                       + [_cell_text(it, f, rt) for f, _, rt in col_defs])
-        # \ufeff BOM：让 Excel 正确识别 UTF-8 中文
-        content = "\ufeff" + buf.getvalue()
-        return send_file(io.BytesIO(content.encode("utf-8")),
-                         mimetype="text/csv; charset=utf-8",
-                         as_attachment=True,
-                         download_name=f"{key}_run{run_id}.csv")
+            kinfo = (it["detail"] or {}).get("kit") or "未分类"
+            ws.append([_type_labels(it, view_mod)]
+                      + ([it.get("n_ignored", 0)] if has_ign else [])
+                      + [_cell_text(it, f, rt) for f, _, rt in col_defs]
+                      + [kinfo, (it["detail"] or {}).get("catalog") or ""])
+        # 表头：底纹 + 加粗 + 居中 + 冻结 + 自动筛选
+        hfill = PatternFill("solid", fgColor="D9E1F2")
+        hfont = Font(bold=True)
+        for c in range(1, len(header) + 1):
+            cell = ws.cell(row=1, column=c)
+            cell.fill = hfill
+            cell.font = hfont
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(header))}{ws.max_row}"
+        # 列宽自适应（中文按 2 宽计），夹在 8~60
+        for idx in range(1, len(header) + 1):
+            w = 8
+            for rr in range(1, ws.max_row + 1):
+                v = ws.cell(row=rr, column=idx).value
+                s = "" if v is None else str(v)
+                w = max(w, sum(2 if ord(ch) > 127 else 1 for ch in s))
+            ws.column_dimensions[get_column_letter(idx)].width = min(60, w + 2)
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return send_file(
+            buf,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True, download_name=f"{key}_run{run_id}.xlsx")
 
     @bp.route("/ignore", methods=["POST"])
     def ignore_action():

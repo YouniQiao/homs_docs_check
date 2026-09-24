@@ -78,6 +78,11 @@ def _ocr_context(db) -> dict:
             "en_cn_images": en_cn_images}
 
 
+CATALOGS = [("harmonyos-guides", "指南"), ("harmonyos-references", "API参考"),
+            ("harmonyos-faqs", "FAQ"), ("harmonyos-releases", "版本说明"),
+            ("best-practices", "最佳实践")]
+
+
 OCR_MODULE = {
     "key": "ocr",
     "name": "图片 OCR 检查",
@@ -94,6 +99,8 @@ OCR_MODULE = {
                      ("confidence", "置信度"), ("doc_url", "来源文档")],
     "filters": [
         {"key": "kit", "label": "Kit", "source": "kit", "default": "all", "options": []},
+        {"key": "catalog", "label": "分类", "source": "detail", "default": "all",
+         "options": [("all", "全部")] + [(c, lb) for c, lb in CATALOGS]},
         {"key": "lang", "label": "语言", "source": "detail", "default": "en",
          "options": [("all", "全部"), ("cn", "中文文档"), ("en", "英文文档")]},
         {"key": "type", "label": "检出", "source": "item_type", "default": "has_cn",
