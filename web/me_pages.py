@@ -6,11 +6,13 @@
        指南（harmonyos-guides）      → 细分 Kit（kit@guides）/ IDE 分组（ide@guides）
        API 参考（harmonyos-references）→ 细分 Kit（kit@references）
        FAQ / 版本说明 / 最佳实践      → 无细分
-  关系：① ⟷ ② = 且；② 大类之间 = 或；大类内细分 = 或；大类 + 细分 = 收窄
+  ③ 语言（lang）—— docs.lang 的取值：cn（中文）/ en（英文）；不选 = 全部语言
+  关系：① ⟷ ② ⟷ ③ = 且；② 大类之间 = 或；大类内细分 = 或；大类 + 细分 = 收窄
         （勾「指南」再勾「ArkUI」→ 只看 ArkUI 的指南，不是「全部指南 ∪ ArkUI 的参考」）。
+        语言是独立的一层「且」（选 cn → 只看中文文档，与文档范围叠加）。
 
 已选值落在 index.db 的 user_areas 表（按用户，UNIQUE(user_id,dim,value)），dim 用
-module / type / kit@guides / kit@references / ide@guides；保存 = 整体替换（先清后插，一个事务）。
+module / type / kit@guides / kit@references / ide@guides / lang；保存 = 整体替换（先清后插，一个事务）。
 P2a 的旧 dim（catalog / kit / ide）读时按下表折算，用户在新页面保存一次即迁移：
   catalog → type；kit → kit@guides + kit@references；ide → ide@guides。
 
@@ -20,19 +22,25 @@ module 不是 docs 的列，无法按 doc_key 判定，不参与文档数。
 
 注意：忽略与「已处理」都是**全局**的，不按用户区分（用户 2026-09 拍板）。
 
-「我的问题」（P2b，本文件）——两段：
-  ① 每日增量：各模块**最新一次成功 run** 的条目（日常 run 是增量的），落在关注领域
-     （**收窄语义**）内的「问题条目」，按模块分组、可折叠；每条给「忽略 / 已处理」两个操作。
-  ② 全量：**跨 run 按 item_key 去重后仍存在**的条目——优先取「当前全量问题」
-     （module_key=recheck）最新一次成功 run 里该模块的条目（recheck 把历史问题跨 run
-     去重后逐条复核，只写「仍存在」的）；recheck 不覆盖的模块（sysmerge）退回该模块
-     最新一次成功 run 的条目（整站全量扫描，天然是「当前全量」）。默认折叠。
+「我的问题」（P2b，本文件）——**两张独立卡片**：
+  ① 每日增量（卡片 #me-daily）：各模块**最新一次成功 run** 的条目（日常 run 是增量的），
+     落在关注领域（**收窄语义**）内的「问题条目」，**每个模块一个页签**；每条给「忽略 / 已处理」。
+  ② 全量问题（卡片 #me-full）：**跨 run 按 item_key 去重后仍存在**的条目——优先取
+     「当前全量问题」（module_key=recheck）最新一次成功 run 里该模块的条目（recheck 把历史
+     问题跨 run 去重后逐条复核，只写「仍存在」的）；recheck 不覆盖的模块（sysmerge）退回
+     该模块最新一次成功 run 的条目（整站全量扫描，天然是「当前全量」）。**同样每模块一个页签**。
+两张卡片**各自独立**的模块页签（P2c）：`?dt=<module>` / `?ft=<module>`，互不影响；
+  页签数字取该模块「仍存在」条数；写操作（忽略/已处理）后回跳保留两段页签（表单带 dt/ft）。
+  首次未设关注领域 = 不筛选（全部模块 + 全部文档）并给提示；设了才按领域过滤。
+明细列表**与各模块页一致**：列与顺序照搬该模块的 item_columns（如 ocr = 图片 / 语言 /
+  识别文字 / 置信度 / 来源文档），图片列渲染缩略图（/media/…，去掉 data/ 前缀）并可点击放大。
 忽略 / 已处理都是**展示端过滤**：run/items 数据一律不动（恢复即时生效），
 被忽略或被处理完的条目不计入「仍存在」，并单列计数 + 可展开列表（可恢复/撤销）。
 
 路由：
-  GET  /me/areas   关注领域配置页（两级：模块 + 文档范围；JS 按大类展开细分）
-  POST /me/areas   整体保存（module / type / kit@* / ide@* 五类 dim）→ 302 回 /me/areas
+  GET  /me          「我的」（本文件只提供上下文；页面路由在 auth.py）?dt= / ?ft= 选页签
+  GET  /me/areas   关注领域配置页（①模块 + ②文档范围 + ③语言；JS 按大类展开细分）
+  POST /me/areas   整体保存（module / type / kit@* / ide@* / lang 六类 dim）→ 302 回 /me/areas
   POST /me/logic   已废弃的口径开关（只存不影响取数）→ 302 回 /me
   POST /me/issue   run_id + item_id + act=ignore|unignore|handle|unhandle → 302 回 /me
 """
@@ -62,17 +70,19 @@ DB_PATH = str(BASE_DIR / "index.db")
 #      FAQ / 版本说明 / 最佳实践   无细分
 # 关系：① ⟷ ② = 且；② 大类之间 = 或；大类内细分 = 或；大类 + 细分 = 收窄
 #   （勾「指南」再勾「ArkUI」→ 只看 ArkUI 的指南，而不是「全部指南 ∪ ArkUI 的参考」）。
-# 存储：沿用 user_areas 表，dim 用 module / type / kit@guides / kit@references / ide@guides。
+# 存储：沿用 user_areas 表，dim 用 module / type / kit@guides / kit@references /
+# ide@guides / lang。lang 是独立的一层「且」（不选 = 全部语言；选 cn/en = 只要这些语言）。
 # P2a 的旧 4 维（catalog / kit / ide）仍可读，按下面这张表折算进新结构
-# （用户在新页面保存一次即迁移为上面的 5 个 dim）：
+# （用户在新页面保存一次即迁移为上面的 6 个 dim）：
 #   catalog → type；kit → kit@guides + kit@references；ide → ide@guides
 MODULE_DIM = "module"
 TYPE_DIM = "type"
 KIT_GUIDES_DIM = "kit@guides"
 KIT_REFS_DIM = "kit@references"
 IDE_GUIDES_DIM = "ide@guides"
+LANG_DIM = "lang"
 
-NEW_DIMS = (MODULE_DIM, TYPE_DIM, KIT_GUIDES_DIM, KIT_REFS_DIM, IDE_GUIDES_DIM)
+NEW_DIMS = (MODULE_DIM, TYPE_DIM, KIT_GUIDES_DIM, KIT_REFS_DIM, IDE_GUIDES_DIM, LANG_DIM)
 LEGACY_DIMS = ("catalog", "kit", "ide")
 ALL_AREA_DIMS = NEW_DIMS + LEGACY_DIMS
 
@@ -109,12 +119,17 @@ MODULE_LABELS = {
     "sysmerge": "系统词合并检查（sysmerge）",
 }
 
-# 两级结构的关系说明（页面文案统一从这里取，避免多处口径漂移）
+# 语言维度（= docs.lang 的实际取值）；不选 = 全部语言
+LANG_LABELS = {"cn": "中文（cn）", "en": "英文（en）"}
+LANG_ORDER = ("cn", "en")
+LANG_HINT = "按文档语言过滤；不选 = 全部语言（中文 + 英文）。"
+
+# 关注领域的关系说明（页面文案统一从这里取，避免多处口径漂移）
 SCOPE_RULE = (
-    "「关注的模块」与「关注的文档范围」之间是【且】；文档范围里各大类之间是【或】；"
-    "大类内部的细分之间也是【或】；大类与它的细分之间是【收窄】——"
-    "勾了「指南」再勾「ArkUI」，范围收窄为 ArkUI 的指南（不是全部指南 + ArkUI 的参考）。"
-    "不选模块 = 全部模块；不选文档范围 = 全部文档。"
+    "① 模块 ⟷ ② 文档范围 ⟷ ③ 语言 之间是【且】；"
+    "② 里各大类之间是【或】，大类与它的细分之间是【收窄】"
+    "（勾「指南」再勾「ArkUI」= 只看 ArkUI 的指南）。"
+    "三者都不选 = 全部。"
 )
 
 MAX_VALUE_LEN = 120
@@ -130,7 +145,7 @@ def _docs_counts(db, col: str, catalog: str = "") -> list[tuple[str, int]]:
     catalog 非空时只统计该大类下的文档：细分区（Kit / IDE）必须按父大类取，
     否则「API 参考」的 Kit 列表里会混进只在指南里出现的 Kit。
     """
-    if col not in ("catalog", "kit", "ide"):
+    if col not in ("catalog", "kit", "ide", "lang"):
         return []
     sql = (f"SELECT {col} AS v, COUNT(*) AS c FROM docs"
            f" WHERE {col} IS NOT NULL AND {col}<>''")
@@ -143,16 +158,18 @@ def _docs_counts(db, col: str, catalog: str = "") -> list[tuple[str, int]]:
 
 
 def area_options(db) -> dict:
-    """{dim: [(value, label, count)]}（新的 5 个 dim）。
+    """{dim: [(value, label, count)]}（新的 6 个 dim）。
 
     type（大类）固定 5 项按 docs.catalog 实际取值；细分 dim 从 docs 表 DISTINCT 取、
-    按文档数倒序；module 固定 4 项。
+    按文档数倒序；module 固定 4 项；lang 固定 cn / en（按 LANG_ORDER，附文档数）。
     """
     catalog_counts = dict(_docs_counts(db, "catalog"))
+    lang_counts = dict(_docs_counts(db, "lang"))
     out: dict = {
         MODULE_DIM: [(v, MODULE_LABELS[v], 0) for v in MODULE_LABELS],
         TYPE_DIM: [(v, TYPE_LABELS[v], catalog_counts.get(v, 0))
                    for v in TYPE_CATALOGS],
+        LANG_DIM: [(v, LANG_LABELS[v], lang_counts.get(v, 0)) for v in LANG_ORDER],
     }
     for parent, defs in SUBDIV_DEFS.items():
         for dim, _axis, col in defs:
@@ -173,11 +190,11 @@ def selected_areas(db, user_id: int) -> dict:
 
 
 def areas_effective(areas: dict) -> dict:
-    """存储里的关注领域（含 P2a 旧 4 维）→ 归一化到新 5 个 dim 的取值集合。
+    """存储里的关注领域（含 P2a 旧 4 维）→ 归一化到新 6 个 dim 的取值集合。
 
     旧值折算：catalog → type；kit → kit@guides + kit@references；ide → ide@guides。
     细分值只在其父大类在范围内时保留；若只选了细分、一个大类都没选（旧数据可能出现），
-    则把细分所属的大类补进来（否则这些细分会静默失效）。
+    则把细分所属的大类补进来（否则这些细分会静默失效）。lang 原样保留（cn / en）。
     """
     raw: dict = {d: [] for d in ALL_AREA_DIMS}
     for dim, vals in (areas or {}).items():
@@ -209,16 +226,19 @@ def areas_effective(areas: dict) -> dict:
     out[TYPE_DIM] = [t for t in TYPE_CATALOGS if t in types]
     for dim, vals in subs.items():
         out[dim] = list(vals) if SUBDIV_PARENT[dim] in out[TYPE_DIM] else []
+    # 语言：独立的一层「且」，只保留本站认识的语言取值（按 LANG_ORDER 归一）
+    out[LANG_DIM] = [v for v in LANG_ORDER if v in raw[LANG_DIM]]
     return out
 
 
 def areas_scope(areas: dict) -> dict:
     """归一化关注领域 → **收窄后**的文档范围。
 
-    {"modules": [...],
+    {"modules": [...], "langs": [...],
      "groups": [{"catalog","label","narrowed","kits","ides","subs"}...],
      "empty": bool}
     groups 之间是「或」；组内 kits / ides 之间是「或」；有细分时该组 = 大类 ∩ (kits ∪ ides)。
+    langs 是独立的一层「且」（不选 = 全部语言）。
     empty=True 表示没选任何文档范围 = 全部文档。
     """
     eff = areas_effective(areas)
@@ -239,17 +259,21 @@ def areas_scope(areas: dict) -> dict:
                        "narrowed": bool(kits or ides), "kits": kits, "ides": ides,
                        "subs": subs})
     return {"modules": list(eff[MODULE_DIM]), "groups": groups,
+            "langs": list(eff[LANG_DIM]),
             "empty": not groups, "effective": eff}
 
 
-def scope_where(scope: dict) -> tuple[str, list]:
-    """收窄范围 → (SQL WHERE 片段, 参数)；片段为空串 = 不限文档（全部文档）。"""
-    groups = (scope or {}).get("groups") or []
-    if not groups:
-        return "", []
+def _norm_langs(vals) -> list:
+    """语言取值归一：只认 LANG_ORDER 里的取值（cn / en），去重并保持固定顺序。"""
+    got = {str(v) for v in (vals or []) if v}
+    return [v for v in LANG_ORDER if v in got]
+
+
+def _groups_where(groups: list) -> tuple[str, list]:
+    """文档范围（大类 + 大类内细分）→ (SQL 片段, 参数)；空串 = 不限文档范围。"""
     clauses: list = []
     params: list = []
-    for g in groups:
+    for g in groups or []:
         parts: list = []
         p: list = []
         if g["kits"]:
@@ -265,19 +289,50 @@ def scope_where(scope: dict) -> tuple[str, list]:
         else:      # 只选大类 = 该类全部文档
             clauses.append("catalog=?")
             params.append(g["catalog"])
+    if not clauses:
+        return "", []
     return "(" + " OR ".join(clauses) + ")", params
+
+
+def scope_where(scope: dict) -> tuple[str, list]:
+    """收窄范围 → (SQL WHERE 片段, 参数)；片段为空串 = 不限文档（全部文档）。
+
+    语言（langs）是独立的一层「且」：与文档范围的 OR 组用 AND 连接
+    （选 cn + 指南 → 中文的指南）。都不选 = 全部文档。
+    """
+    scope = scope or {}
+    clauses: list = []
+    params: list = []
+    langs = _norm_langs(scope.get("langs"))
+    if langs:
+        clauses.append("lang IN (%s)" % ",".join("?" * len(langs)))
+        params += langs
+    gw, gp = _groups_where(scope.get("groups") or [])
+    if gw:
+        clauses.append(gw)
+        params += gp
+    if not clauses:
+        return "", []
+    return "(" + " AND ".join(clauses) + ")", params
 
 
 def doc_hit(scope: dict, meta: dict, detail: dict | None = None) -> bool:
     """某文档 / 问题条目是否落在收窄范围内（与 scope_where 同一套判定，两处必须一致）。
 
-    meta 优先（docs 表的 catalog/kit/ide），取不到时回落条目 detail。
+    meta 优先（docs 表的 catalog/kit/ide/lang），取不到时回落条目 detail。
+    lang 是独立的一层「且」，先判（语言不在范围内 → 直接不算命中）。
     """
-    groups = (scope or {}).get("groups") or []
-    if not groups:
-        return True
+    scope = scope or {}
     meta = meta or {}
     detail = detail or {}
+    langs = _norm_langs(scope.get("langs"))
+    if langs:
+        lg = str(meta.get("lang") or detail.get("lang") or "")
+        if lg not in langs:
+            return False
+    groups = scope.get("groups") or []
+    if not groups:
+        return True
     cat = meta.get("catalog") or detail.get("catalog") or ""
     for g in groups:
         if cat != g["catalog"]:
@@ -298,18 +353,20 @@ def scope_preview(db, scope: dict, sample_n: int = _MAX_SAMPLE) -> dict:
     module 不是 docs 的列，无法按 doc_key 判定，不参与文档数。
     """
     total = int(db._conn.execute("SELECT COUNT(*) FROM docs").fetchone()[0])
+    langs = _norm_langs((scope or {}).get("langs"))
     where, params = scope_where(scope)
     hit = int(db._conn.execute(
         "SELECT COUNT(*) FROM docs" + (f" WHERE {where}" if where else ""),
         params).fetchone()[0])
     rows = db._conn.execute(
-        "SELECT doc_key, title, catalog, kit, ide FROM docs"
+        "SELECT doc_key, title, catalog, kit, ide, lang FROM docs"
         + (f" WHERE {where}" if where else "")
         + " ORDER BY catalog, kit, title LIMIT ?", params + [sample_n]).fetchall()
 
     groups: list = []
     for g in (scope or {}).get("groups") or []:
-        gw, gp = scope_where({"groups": [g]})
+        # 每个大类的明细也要吃语言条件（否则明细行加起来 ≠ 命中总数）
+        gw, gp = scope_where({"groups": [g], "langs": langs})
         n = int(db._conn.execute(
             f"SELECT COUNT(*) FROM docs WHERE {gw}", gp).fetchone()[0])
         subs: list = []
@@ -317,8 +374,9 @@ def scope_preview(db, scope: dict, sample_n: int = _MAX_SAMPLE) -> dict:
             vals = g["kits"] if col == "kit" else g["ides"]
             for v in vals:
                 c = int(db._conn.execute(
-                    f"SELECT COUNT(*) FROM docs WHERE catalog=? AND {col}=?",
-                    (g["catalog"], v)).fetchone()[0])
+                    f"SELECT COUNT(*) FROM docs WHERE catalog=? AND {col}=?"
+                    + (" AND lang IN (%s)" % ",".join("?" * len(langs)) if langs else ""),
+                    (g["catalog"], v, *langs)).fetchone()[0])
                 subs.append({"axis": axis, "value": v, "count": c,
                              "count_fmt": f"{c:,}"})
         groups.append({
@@ -329,14 +387,17 @@ def scope_preview(db, scope: dict, sample_n: int = _MAX_SAMPLE) -> dict:
         })
 
     return {
-        "has_scope": bool(groups),
+        "has_scope": bool(groups) or bool(langs),
         "modules": list((scope or {}).get("modules") or []),
+        "langs": langs,
+        "lang_labels": [LANG_LABELS.get(v, v) for v in langs],
         "total_docs": total, "total_docs_fmt": f"{total:,}",
         "hit": {"count": hit, "count_fmt": f"{hit:,}",
                 "samples": [{"doc_key": r[0], "title": r[1] or r[0], "catalog": r[2],
-                             "kit": r[3] or "", "ide": r[4] or ""} for r in rows]},
+                             "kit": r[3] or "", "ide": r[4] or "", "lang": r[5] or ""}
+                            for r in rows]},
         "groups": groups,
-        "all_docs": not groups,
+        "all_docs": not groups and not langs,
     }
 
 
@@ -350,9 +411,67 @@ ISSUE_ICONS = {"ocr": "🔍", "encheck": "🌐", "linkcheck": "🔗", "sysmerge"
 # 「当前全量问题」（recheck）覆盖的模块；其余（sysmerge）取自身最新一次成功 run
 RECHECK_MODULES = ("ocr", "encheck", "linkcheck")
 ISSUE_MAX_ITEMS = 30          # 每组最多渲染多少条（其余给「还有 N 条」+ 模块页链接）
-ISSUE_HINT = ("「仍存在」= 最新一次检查里还有、且没被忽略/处理掉的条目；"
-              "已忽略 / 已处理都是全局生效（谁先点谁生效，不按用户区分），"
-              "被处理完的条目不计入「仍存在」但保留可见，可随时恢复。")
+ISSUE_HINT = ("""「仍存在」= 最新一次检查里还有、且没被忽略/处理掉的条目；"""
+              """忽略 / 已处理都是全局的（谁先点谁生效），被处理完的不计入「仍存在」但保留可见，可随时恢复。""")
+
+# ── 明细列：照搬各模块页的 item_columns（/me 列表与模块页同一套列与顺序）──────
+_COLUMNS_CACHE: dict | None = None
+
+
+def item_columns(mk: str) -> list[tuple]:
+    """模块 key → [(字段, 标签, 渲染类型)]。
+
+    与模块页 framework._norm_columns 同一套规则：模块可定义二元组 (f, label)
+    或三元组 (f, label, render)；渲染类型缺省 text。取不到配置时返回空（页面降级）。
+    """
+    global _COLUMNS_CACHE
+    if _COLUMNS_CACHE is None:
+        _COLUMNS_CACHE = {}
+        try:
+            web_dir = str(Path(__file__).resolve().parent)
+            if web_dir not in sys.path:
+                sys.path.insert(0, web_dir)
+            from modules import MODULES
+            for m in MODULES:
+                cols: list = []
+                for col in m.get("item_columns") or []:
+                    cols.append((col[0], col[1], col[2] if len(col) > 2 else "text"))
+                _COLUMNS_CACHE[m["key"]] = cols
+        except Exception:  # noqa: BLE001 - 取不到列配置也不该让页面挂掉
+            _COLUMNS_CACHE = {}
+    return list(_COLUMNS_CACHE.get(mk) or [])
+
+
+def _link_rows(mk: str, detail: dict, probs: list) -> dict:
+    """link_list 列的渲染数据：{字段: [{text, url, status, ignored, handled}]}。
+
+    与模块页一样逐条链接标忽略态（这里只读展示，操作仍走行级「忽略 / 已处理」按钮）。
+    """
+    by_kind: dict = {}
+    for p in probs or []:
+        if p.get("inline"):
+            by_kind.setdefault(p["kind"], []).append(p)
+    if not by_kind:
+        return {}
+    kind2field = {k: f for k, _l, _c, f in ignores.kinds_of(mk) if f}
+    out: dict = {}
+    for kind, ps in by_kind.items():
+        f = kind2field.get(kind)
+        if not f:
+            continue
+        raw = detail.get(f) or []
+        rows: list = []
+        for i, p in enumerate(ps):
+            entry = raw[i] if i < len(raw) and isinstance(raw[i], dict) else {}
+            rows.append({"text": entry.get("text") or p.get("label") or "",
+                         "url": p.get("target") or entry.get("url") or "",
+                         "status": entry.get("status") or "",
+                         "ignored": bool(p.get("ignored")),
+                         "handled": bool(p.get("handled"))})
+        if rows:
+            out[f] = rows
+    return out
+
 
 
 def _fmt_time(s) -> str:
@@ -403,16 +522,16 @@ def _run_items(db, run_id: int) -> list[dict]:
 
 
 def _docs_meta(db, keys) -> dict:
-    """doc_key → {title, catalog, kit, ide, url}（分批 IN，避免超长 SQL）。"""
+    """doc_key → {title, catalog, kit, ide, lang, url}（分批 IN，避免超长 SQL）。"""
     keys = sorted({k for k in keys if k})
     out: dict = {}
     for i in range(0, len(keys), 400):
         chunk = keys[i:i + 400]
-        sql = ("SELECT doc_key, title, catalog, kit, ide, url FROM docs"
+        sql = ("SELECT doc_key, title, catalog, kit, ide, url, lang FROM docs"
                " WHERE doc_key IN (%s)" % ",".join("?" * len(chunk)))
-        for dk, title, cat, kit, ide, url in db._conn.execute(sql, chunk):
+        for dk, title, cat, kit, ide, url, lang in db._conn.execute(sql, chunk):
             out[dk] = {"title": title or "", "catalog": cat or "", "kit": kit or "",
-                       "ide": ide or "", "url": url or ""}
+                       "ide": ide or "", "url": url or "", "lang": lang or ""}
     return out
 
 
@@ -515,6 +634,7 @@ def _build_issue_group(db, mk: str, run: dict | None, raw_items: list, metas: di
     g = {"module": mk, "label": ISSUE_LABELS.get(mk, mk), "icon": ISSUE_ICONS.get(mk, ""),
          "source": source, "run_id": run["id"] if run else None,
          "run_at": _fmt_time((run or {}).get("started_at")),
+         "columns": item_columns(mk),      # 列 = 该模块页的 item_columns（顺序一致）
          "checked": len(raw_items), "n_total": 0, "n_open": 0, "n_ignored": 0,
          "n_handled": 0, "n_out": 0, "n_normal": 0,
          "open": [], "ignored": [], "handled": []}
@@ -537,12 +657,15 @@ def _build_issue_group(db, mk: str, run: dict | None, raw_items: list, metas: di
                       or dk or it["item_key"] or ""),
             "doc_key": dk, "catalog": meta.get("catalog") or d.get("catalog") or "",
             "kit": meta.get("kit") or d.get("kit") or "", "ide": meta.get("ide") or "",
-            "lang": d.get("lang") or "", "item_type": it["item_type"],
+            "lang": meta.get("lang") or d.get("lang") or "", "item_type": it["item_type"],
             "summary": summary, "extra": extra, "status": st["status"],
             "n_probs": st["n_probs"], "n_open": st["n_open"],
             "all_ignored": st["all_ignored"], "all_handled": st["all_handled"],
             "url": meta.get("url") or d.get("doc_url") or d.get("url") or "",
             "can_act": bool(probs),
+            # 明细渲染：整列照搬模块页（detail = items.detail_json 原样；links = link_list 列数据）
+            "detail": d, "links": _link_rows(mk, d, probs),
+            "n_ign": st["n_ignored"], "n_hand": st["n_handled"],
         }
         g["n_total"] += 1
         bucket = st["status"] if st["status"] in ("open", "ignored", "handled") else "open"
@@ -559,11 +682,54 @@ def _totals(groups: list) -> dict:
     return {k: sum(g[k] for g in groups) for k in keys}
 
 
-def issue_context(db, areas: dict) -> dict:
-    """「📋 我的问题」两段数据（每日增量 / 全量）+ 已处理汇总；异常时降级为空。"""
+def _tab_items(groups: list) -> list[dict]:
+    """两段各自的「模块页签」：[{key,label,icon,n_open,n_ignored,n_handled,n_total}]。
+
+    页签名 / 顺序 = 该段分组顺序（= 关注模块顺序，未选模块时 = ISSUE_MODULES 顺序），
+    与各模块页的页签同款；数字取「仍存在」（与列表里的行数一致）。
+    """
+    return [{"key": g["module"], "label": g["label"], "icon": g["icon"],
+             "n_open": g["n_open"], "n_ignored": g["n_ignored"],
+             "n_handled": g["n_handled"], "n_total": g["n_total"],
+             "run_id": g["run_id"]} for g in groups]
+
+
+def _pick_group(groups: list, key: str) -> dict | None:
+    """按页签 key 选分组；key 为空 / 非法时回落第一个（页签永远有内容可看）。"""
+    if not groups:
+        return None
+    for g in groups:
+        if g["module"] == key:
+            return g
+    return groups[0]
+
+
+def _back_to_me() -> str:
+    """写操作后回 /me 的地址：保留两段各自的模块页签（表单里带 dt / ft 隐藏字段）。
+
+    不带这两个字段时退回「第一个模块的页签」，否则用户在「链接健康」页签点忽略后
+    会被弹回「图片 OCR」页签（看起来像操作没生效）。
+    """
+    qs: list = []
+    for name in ("dt", "ft"):
+        v = (request.form.get(name) or "").strip()
+        if v in ISSUE_MODULES:
+            qs.append(f"{name}={v}")
+    return "/me" + (("?" + "&".join(qs)) if qs else "") + "#me-issues"
+
+
+def issue_context(db, areas: dict, daily_tab: str = "", full_tab: str = "") -> dict:
+    """「📋 我的问题」两段数据（每日增量 / 全量问题）+ 已处理汇总；异常时降级为空。
+
+    两段**各自**带一列模块页签（daily_tab / full_tab 是当前选中的模块 key）：
+    返回的 ``daily`` / ``full`` 仍是该段**全部模块**的分组（页签数字从这里取），
+    ``daily_active`` / ``full_active`` 才是当前页签要渲染的那一组（模板只渲染它，
+    避免一次铺 4 个模块的明细表）。
+    """
     scope, mods = _area_selection(areas)
     out = {
-        "has_areas": bool((scope or {}).get("groups") or mods),
+        "has_areas": bool((scope or {}).get("groups") or mods
+                          or (scope or {}).get("langs")),
         "scope": scope,
         "issue_modules": ISSUE_MODULES, "issue_labels": ISSUE_LABELS,
         "issue_icons": ISSUE_ICONS, "issue_max": ISSUE_MAX_ITEMS, "issue_hint": ISSUE_HINT,
@@ -622,6 +788,14 @@ def issue_context(db, areas: dict) -> dict:
     out["daily_totals"] = _totals(out["daily"])
     out["full_totals"] = _totals(out["full"])
 
+    # 两段各自的模块页签 + 当前选中的分组（daily_tab / full_tab 来自 ?dt= / ?ft=）
+    out["daily_tabs"] = _tab_items(out["daily"])
+    out["full_tabs"] = _tab_items(out["full"])
+    out["daily_active"] = _pick_group(out["daily"], (daily_tab or "").strip())
+    out["full_active"] = _pick_group(out["full"], (full_tab or "").strip())
+    out["daily_tab"] = out["daily_active"]["module"] if out["daily_active"] else ""
+    out["full_tab"] = out["full_active"]["module"] if out["full_active"] else ""
+
     # 已处理：单列计数（全局生效的 handled 记录，含 sysmerge 等所有模块）
     try:
         hrows = db.list_handled(active_only=True)
@@ -647,12 +821,22 @@ def scope_summary(scope: dict) -> list[dict]:
     return out
 
 
+def lang_summary(scope: dict) -> list[dict]:
+    """语言维度的只读回显：[{value, label}]（不选 = 全部语言 → 空列表）。"""
+    return [{"value": v, "label": LANG_LABELS.get(v, v)}
+            for v in _norm_langs((scope or {}).get("langs"))]
+
+
 def build_areas_view(db, eff: dict, options: dict) -> dict:
-    """GET /me/areas 渲染用：①模块 + ②大类（含细分选项与已选回填）结构化数据。"""
+    """GET /me/areas 渲染用：①模块 + ②大类（含细分选项与已选回填）+ ③语言。"""
     checked = {d: set(eff.get(d) or []) for d in NEW_DIMS}
     opt_map = options or {}
     modules = [{"value": v, "label": MODULE_LABELS[v],
                 "checked": v in checked[MODULE_DIM]} for v in MODULE_LABELS]
+    lang_counts = dict(_docs_counts(db, "lang"))
+    langs = [{"value": v, "label": LANG_LABELS[v],
+              "count_fmt": f"{lang_counts.get(v, 0):,}" if lang_counts.get(v) else "",
+              "checked": v in checked[LANG_DIM]} for v in LANG_ORDER]
     type_counts = dict(_docs_counts(db, "catalog"))
     types: list = []
     for t in TYPE_CATALOGS:
@@ -674,11 +858,12 @@ def build_areas_view(db, eff: dict, options: dict) -> dict:
                       "full_label": TYPE_FULL_LABELS[t],
                       "count_fmt": f"{type_counts.get(t, 0):,}",
                       "checked": t in checked[TYPE_DIM], "subs": subs})
-    return {"modules": modules, "types": types}
+    return {"modules": modules, "types": types, "langs": langs,
+            "lang_dim": LANG_DIM, "lang_hint": LANG_HINT}
 
 
 def areas_page_context(db, user: dict) -> dict:
-    """GET /me/areas 上下文：选项 + 已选回填 + 当前收窄口径预览。"""
+    """GET /me/areas 上下文：选项 + 已选回填 + 当前收窄口径预览（含语言）。"""
     uid = int(user["id"])
     options = area_options(db)
     raw = selected_areas(db, uid)
@@ -690,11 +875,14 @@ def areas_page_context(db, user: dict) -> dict:
         "area_total": sum(len(v) for v in eff.values()),
         "has_legacy": any(raw.get(d) for d in LEGACY_DIMS),
         "module_labels": MODULE_LABELS, "module_dim": MODULE_DIM,
+        "lang_labels": LANG_LABELS, "lang_dim": LANG_DIM,
+        "lang_hint": LANG_HINT,
         "type_labels": TYPE_LABELS, "type_full_labels": TYPE_FULL_LABELS,
         "subdiv_parent": SUBDIV_PARENT, "subdiv_axis": SUBDIV_AXIS_LABEL,
         "subdiv_hints": SUBDIV_HINTS, "subdiv_defs": SUBDIV_DEFS,
         "scope_rule": SCOPE_RULE, "scope": scope,
         "scope_summary": scope_summary(scope),
+        "lang_summary": lang_summary(scope),
     }
     try:
         ctx["preview"] = scope_preview(db, scope)
@@ -706,26 +894,34 @@ def areas_page_context(db, user: dict) -> dict:
 def _empty_context() -> dict:
     return {"areas": {d: [] for d in ALL_AREA_DIMS},
             "areas_eff": {d: [] for d in NEW_DIMS},
-            "area_options": {}, "labels": {}, "areas_view": {"modules": [], "types": []},
+            "area_options": {}, "labels": {}, "areas_view": {"modules": [], "types": [], "langs": []},
             "area_total": 0, "has_legacy": False,
             "module_labels": MODULE_LABELS, "module_dim": MODULE_DIM,
+            "lang_labels": LANG_LABELS, "lang_dim": LANG_DIM, "lang_hint": LANG_HINT,
             "type_labels": TYPE_LABELS, "type_full_labels": TYPE_FULL_LABELS,
             "subdiv_parent": SUBDIV_PARENT, "subdiv_axis": SUBDIV_AXIS_LABEL,
             "subdiv_hints": SUBDIV_HINTS, "subdiv_defs": SUBDIV_DEFS,
             "scope_rule": SCOPE_RULE,
-            "scope": {"modules": [], "groups": [], "empty": True, "effective": {}},
-            "scope_summary": [], "preview": None,
+            "scope": {"modules": [], "groups": [], "langs": [], "empty": True,
+                      "effective": {}},
+            "scope_summary": [], "lang_summary": [], "preview": None,
             # 「📋 我的问题」（P2b）：未登录/无用户时给空壳，模板照常渲染
             "has_areas": False, "issue_modules": ISSUE_MODULES,
             "issue_labels": ISSUE_LABELS, "issue_icons": ISSUE_ICONS,
             "issue_max": ISSUE_MAX_ITEMS, "issue_hint": ISSUE_HINT,
             "daily": [], "full": [], "daily_totals": {}, "full_totals": {},
+            "daily_tabs": [], "full_tabs": [],
+            "daily_active": None, "full_active": None,
+            "daily_tab": "", "full_tab": "",
             "handled_rows": [], "handled_total": 0, "recheck_run": None}
 
 
-def me_context(db, user: dict) -> dict:
+def me_context(db, user: dict, daily_tab: str = "", full_tab: str = "") -> dict:
     """/me 页面渲染关注领域（只读回显）+ 收窄口径预览 + 我的问题所需上下文；
-    预览/问题取数异常不该让页面挂掉。"""
+    预览/问题取数异常不该让页面挂掉。
+
+    daily_tab / full_tab：问题列表两段各自的模块页签（来自 ?dt= / ?ft=）。
+    """
     ctx = _empty_context()
     if not user or not user.get("id"):
         return ctx
@@ -738,25 +934,27 @@ def me_context(db, user: dict) -> dict:
     ctx["area_total"] = sum(len(v) for v in ctx["areas_eff"].values())
     ctx["scope"] = areas_scope(ctx["areas"])
     ctx["scope_summary"] = scope_summary(ctx["scope"])
+    ctx["lang_summary"] = lang_summary(ctx["scope"])
     try:
         ctx["preview"] = scope_preview(db, ctx["scope"])
     except Exception:  # noqa: BLE001 - 预览算不出来时页面降级（不影响其它区）
         ctx["preview"] = None
     try:
-        ctx.update(issue_context(db, ctx["areas"]))
+        ctx.update(issue_context(db, ctx["areas"], daily_tab, full_tab))
     except Exception:  # noqa: BLE001 - 问题列表算不出来时页面降级（关注领域区照常）
         pass
     return ctx
 
 
-def build_me_context(db_path: str, user: dict) -> dict:
+def build_me_context(db_path: str, user: dict, daily_tab: str = "",
+                     full_tab: str = "") -> dict:
     """同 me_context，但自行开关连接（脚本/测试用）。"""
     ctx = _empty_context()
     if not user or not user.get("id"):
         return ctx
     db = IndexDB(db_path)
     try:
-        return me_context(db, user)
+        return me_context(db, user, daily_tab, full_tab)
     finally:
         db.close()
 
@@ -788,11 +986,12 @@ def register_me(app, db_path: str = DB_PATH):
 
     @me_bp.route("/me/areas", methods=["GET", "POST"], strict_slashes=False)
     def me_areas():
-        """「关注领域」独立配置页：①模块 + ②文档范围（大类 + 大类内细分）。
+        """「关注领域」独立配置页：①模块 + ②文档范围（大类 + 大类内细分）+ ③语言。
 
         GET  渲染配置页（选项从 docs 表 DISTINCT 取，已保存的回填）。
         POST 整体替换该用户的配置（user_areas 表，dim = module / type /
-             kit@guides / kit@references / ide@guides），保存后 302 回本页以便核对回填。
+             kit@guides / kit@references / ide@guides / lang），
+             保存后 302 回本页以便核对回填。
         """
         user, resp = _require_user("/me/areas")
         if resp is not None:
@@ -816,8 +1015,10 @@ def register_me(app, db_path: str = DB_PATH):
 
             mods = [v for v in _getlist(MODULE_DIM) if v in MODULE_LABELS]
             types = [v for v in _getlist(TYPE_DIM) if v in TYPE_LABELS]
+            langs = [v for v in _getlist(LANG_DIM) if v in LANG_LABELS]
             pairs: list = ([(MODULE_DIM, v) for v in mods]
-                           + [(TYPE_DIM, v) for v in types])
+                           + [(TYPE_DIM, v) for v in types]
+                           + [(LANG_DIM, v) for v in langs])
             warns: list = []
             n_sub = 0
             for parent, defs in SUBDIV_DEFS.items():
@@ -840,11 +1041,13 @@ def register_me(app, db_path: str = DB_PATH):
 
             if db.set_user_areas(uid, pairs, clear_dims=ALL_AREA_DIMS):
                 if not pairs:
-                    flash("✅ 已保存：未选任何关注领域 = 全部模块 + 全部文档。", "ok")
+                    flash("✅ 已保存：未选任何关注领域 = 全部模块 + 全部文档 + 全部语言。", "ok")
                 else:
                     flash(f"✅ 关注领域已保存：模块 {len(mods)} 项 · "
                           f"文档范围 {len(types)} 个大类"
-                          f"{f'（细分 {n_sub} 项）' if n_sub else ''}。", "ok")
+                          f"{f'（细分 {n_sub} 项）' if n_sub else ''} · "
+                          f"语言 {len(langs)} 项"
+                          f"{'（全部语言）' if not langs else ''}。", "ok")
                 for w in warns:
                     flash(f"⚠️ {w}", "warn")
             else:
@@ -889,6 +1092,7 @@ def register_me(app, db_path: str = DB_PATH):
         - 已处理：写 handled 表（index.db），恢复同理。
         - 两者都是**全局生效**（谁先点谁生效，不按用户区分）；run / items 数据一律不动，
           所以恢复即时生效、不必重跑检查。
+        - 表单里带 dt / ft（两段当前页签）→ 回跳时保留，用户不会「操作完被弹回第一个模块」。
         """
         user, resp = _require_user()
         if resp is not None:
@@ -909,11 +1113,11 @@ def register_me(app, db_path: str = DB_PATH):
                 db.close()
             flash("↩️ 已撤销该「已处理」记录（重新计入「仍存在」）。" if ok
                   else "ℹ️ 该记录已不是生效中的「已处理」。", "ok" if ok else "info")
-            return redirect("/me#me-issues")
+            return redirect(_back_to_me())
 
         if act not in ("ignore", "unignore", "handle", "unhandle") or not run_id or not item_id:
             flash("⚠️ 操作参数不完整，已忽略本次操作。", "warn")
-            return redirect("/me#me-issues")
+            return redirect(_back_to_me())
 
         db = IndexDB(db_path)
         try:
@@ -922,7 +1126,7 @@ def register_me(app, db_path: str = DB_PATH):
                 (item_id, run_id)).fetchone()
             if not row:
                 flash("⚠️ 该条目不存在（可能已被清理），请刷新后重试。", "warn")
-                return redirect("/me#me-issues")
+                return redirect(_back_to_me())
             try:
                 detail = json.loads(row[1] or "{}")
             except Exception:  # noqa: BLE001
@@ -931,11 +1135,11 @@ def register_me(app, db_path: str = DB_PATH):
             mk = detail.get("module") or run.get("module_key") or ""
             if mk not in ISSUE_MODULES or not ignores.supports(mk):
                 flash("⚠️ 该条目所属模块不支持忽略 / 已处理。", "warn")
-                return redirect("/me#me-issues")
+                return redirect(_back_to_me())
             probs = ignores.item_problems(mk, detail, row[0])
             if not probs:
                 flash("⚠️ 该条目没有可操作的问题项。", "warn")
-                return redirect("/me#me-issues")
+                return redirect(_back_to_me())
 
             ip = _client_ip()
             n = 0

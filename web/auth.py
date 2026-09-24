@@ -272,12 +272,15 @@ def register_auth(app, db_path: str):
                 return _notice("登录功能尚未配置，暂时无法查看「我的」页面。")
             return redirect("/auth/login?next=/me")
         profile = None
+        # 问题列表两段各自的模块页签（P2c）：?dt= 每日增量 / ?ft= 全量问题
+        dt = (request.args.get("dt") or "").strip()
+        ft = (request.args.get("ft") or "").strip()
         db = IndexDB(db_path)
         try:
             if user.get("gitcode_id"):
                 profile = db.get_user(user["gitcode_id"])
             # 关注领域配置（P2a）：区选项 + 已选标签（选项来自 docs 表 DISTINCT）
-            areas_ctx = me_context(db, user)
+            areas_ctx = me_context(db, user, daily_tab=dt, full_tab=ft)
         finally:
             db.close()
         return render_template("me.html", current_user=user, profile=profile,

@@ -1,161 +1,101 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
-    .me-wrap { max-width: 860px; margin: 4px auto 0; }
+    /* ── 布局（P2d）：a. 登录信息 / b. 关注领域小条 / c. 两张问题卡片（① 每日增量 ② 全量）
+       宽度不设 max-width —— 直接吃 base 的 .container（与各模块页一致）。        */
+    .me-wrap { margin: 4px auto 0; }
     .me-card { background: var(--card); border: 1px solid var(--border);
                border-radius: var(--radius); box-shadow: var(--shadow);
-               padding: 26px 28px; margin-bottom: 16px; }
-    .me-head { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-    .me-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover;
-                 border: 1px solid var(--border); background: #f0f2f7; flex: 0 0 auto; }
-    .me-avatar-txt { display: flex; align-items: center; justify-content: center;
-                     font-size: 28px; font-weight: 700; color: var(--primary);
-                     background: var(--primary-soft); }
-    .me-name { font-size: 20px; font-weight: 700; margin-bottom: 2px; }
-    .me-sub { font-size: 13px; color: var(--muted); }
-    .me-sub .mono { font-size: 12px; }
-    .me-meta { font-size: 12px; color: var(--muted); margin-top: 6px; }
-    .me-actions { margin-left: auto; }
-    .me-btn { display: inline-block; padding: 8px 16px; border-radius: 8px;
-              font-size: 13px; text-decoration: none; }
-    .me-btn:hover { text-decoration: none; opacity: .9; }
-    .me-btn-primary { background: var(--primary); color: #fff !important; }
-    .me-btn-plain { background: #fff; border: 1px solid var(--border);
-                    color: var(--text); }
-    .me-btn-plain:hover { background: #f7f9fc; }
+               padding: 22px 26px; margin-bottom: 16px; }
     .me-card h2 { font-size: 16px; margin-bottom: 6px; }
-    .me-hint { font-size: 13px; color: var(--muted); line-height: 1.8; }
-    .me-soon { display: inline-block; font-size: 11px; font-weight: 600;
-               padding: 2px 9px; border-radius: 999px; background: var(--primary-soft);
-               color: var(--primary); margin-left: 6px; vertical-align: middle; }
-    .me-note { padding: 12px 16px; border-radius: 9px; background: #fdf0e3;
-               color: #c2570a; font-size: 13px; margin-bottom: 16px; }
-    .me-empty { color: var(--muted); font-size: 13px; padding: 18px 0 4px; }
-    /* ── 关注领域配置（P2a）── */
     .me-badge { font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
                 background: var(--primary-soft); color: var(--primary); margin-left: 6px;
                 vertical-align: middle; }
+    .me-hint { font-size: 13px; color: var(--muted); line-height: 1.8; }
     .me-flash { padding: 10px 14px; border-radius: 9px; font-size: 13px; margin: 12px 0 0; }
     .me-flash.ok { background: #e5f6ec; color: var(--added); }
     .me-flash.warn { background: #fdeaea; color: var(--deleted); }
     .me-flash.info { background: var(--primary-soft); color: var(--primary); }
-    .me-dim { border-top: 1px dashed var(--border); padding: 16px 0 6px; }
-    .me-dim:first-of-type { border-top: none; padding-top: 10px; }
-    .me-dim-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-    .me-dim-h .t { font-size: 14px; font-weight: 600; }
-    .me-dim-h .n { font-size: 12px; color: var(--muted); }
-    .me-dim-hint { font-size: 12px; color: var(--muted); margin: 3px 0 10px; }
-    .me-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;
-               align-items: center; }
-    .me-tag-form { display: inline; margin: 0; }
-    .me-tag { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px 5px 13px;
-              border: 1px solid #c9d6f5; background: var(--primary-soft); color: var(--primary);
-              border-radius: 999px; font-size: 12.5px; font-family: inherit;
-              cursor: pointer; max-width: 100%; }
-    .me-tag:hover { background: #e0e8fd; border-color: var(--primary); }
-    .me-tag .x { font-size: 14px; line-height: 1; opacity: .65; flex: 0 0 auto; }
-    .me-tag-ph { font-size: 12.5px; color: var(--muted); }
-    .me-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .me-add select { padding: 6px 10px; border: 1px solid var(--border); border-radius: 7px;
-                     font-size: 13px; background: #fff; max-width: 360px; font-family: inherit; }
-    .me-add select:focus { outline: none; border-color: var(--primary);
-                           box-shadow: 0 0 0 3px rgba(47,84,208,.12); }
-    .me-add button { padding: 7px 15px; border: none; border-radius: 8px;
-                     background: var(--primary); color: #fff; font-size: 13px;
-                     font-family: inherit; cursor: pointer; }
-    .me-add button:hover { opacity: .9; }
-    /* ── 口径预览（📐）── */
-    .me-logic-switch { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-                       margin: 12px 0 2px; }
-    .me-logic-lbl { font-size: 12.5px; color: var(--muted); }
-    .me-logic-form { display: inline; margin: 0; }
-    .me-logic-btn { padding: 6px 14px; border: 1px solid var(--border); background: #fff;
-                    border-radius: 999px; font-size: 13px; font-family: inherit;
-                    color: var(--text); cursor: pointer; }
-    .me-logic-btn:hover { background: #f7f9fc; }
-    .me-logic-btn.on { background: var(--primary); border-color: var(--primary);
-                       color: #fff; font-weight: 600; }
-    .me-cmp { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; align-items: stretch; }
-    .me-cmp-col { flex: 1 1 300px; min-width: 258px; border: 1px solid var(--border);
-                  border-radius: 10px; padding: 13px 16px; background: #fbfcff; }
-    .me-cmp-col.empty { background: #fffafa; border-color: #f2c9c9; }
-    .me-cmp-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-    .me-cmp-tag { font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
-    .me-cmp-tag.union { background: var(--primary-soft); color: var(--primary); }
-    .me-cmp-tag.intersection { background: #fdf0e3; color: #c2570a; }
-    .me-cmp-name { font-size: 14px; font-weight: 600; }
-    .me-cmp-op { font-size: 15px; color: var(--muted); }
-    .me-cmp-n { margin-left: auto; font-size: 15px; font-weight: 700; color: var(--primary); }
-    .me-cmp-col.empty .me-cmp-n { color: var(--deleted); }
-    .me-cmp-sub { font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
-    .me-samples { list-style: none; margin: 0; padding: 0; }
-    .me-samples li { padding: 7px 0; border-top: 1px dashed var(--border); font-size: 13px; }
-    .me-samples .t { display: block; line-height: 1.5; }
-    .me-samples .m { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-    .me-cmp-none { font-size: 12.5px; color: var(--muted); padding: 6px 0 2px; }
-    .me-cmp-foot { font-size: 12px; color: var(--muted); margin-top: 12px; line-height: 1.85; }
-    .me-warn { margin-top: 12px; padding: 10px 14px; border-radius: 9px;
-               background: #fdeaea; color: var(--deleted); font-size: 13px; line-height: 1.75; }
-    /* ── 我的问题（📋 P2b）── */
-    .mi-sec { border-top: 1px dashed var(--border); padding: 14px 0 2px; }
-    .mi-sec.first { border-top: none; padding-top: 6px; }
-    .mi-sec-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-    .mi-sec-h .t { font-size: 14.5px; font-weight: 700; }
-    .mi-sec-h .n { font-size: 12px; color: var(--muted); }
-    .mi-sec-num { margin-left: auto; font-size: 12.5px; color: var(--muted); }
-    .mi-sec-num b { color: var(--deleted); font-size: 15px; }
-    .mi-grp { border: 1px solid var(--border); border-radius: 10px; margin: 10px 0 0;
-              background: #fbfcff; }
-    .mi-grp > summary { cursor: pointer; padding: 10px 14px; display: flex; gap: 10px;
-                        align-items: baseline; flex-wrap: wrap; list-style: none; }
-    .mi-grp > summary::-webkit-details-marker { display: none; }
-    .mi-grp > summary::before { content: "▸"; color: var(--muted); font-size: 12px; }
-    .mi-grp[open] > summary::before { content: "▾"; }
-    .mi-gt { font-size: 13.5px; font-weight: 600; }
-    .mi-gn { font-size: 12px; color: var(--muted); }
-    .mi-gn b { color: var(--deleted); }
-    .mi-gsrc { font-size: 11.5px; color: var(--muted); }
-    .mi-gtime { margin-left: auto; font-size: 11.5px; color: var(--muted); }
-    .mi-list { list-style: none; margin: 0; padding: 0 14px 8px; }
-    .mi-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0;
-              border-top: 1px dashed var(--border); }
-    .mi-row.ignored, .mi-row.handled { opacity: .6; }
-    .mi-main { flex: 1 1 auto; min-width: 0; }
-    .mi-title { font-size: 13.5px; font-weight: 600; line-height: 1.5; word-break: break-word; }
-    .mi-sum { font-size: 12.5px; color: #41485c; margin-top: 2px; word-break: break-word; }
-    .mi-extra { color: var(--muted); }
-    .mi-meta { font-size: 11.5px; color: var(--muted); margin-top: 3px; word-break: break-word; }
-    .mi-mod { font-weight: 600; color: #41485c; }
-    .mi-st { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px;
-             margin-left: 6px; vertical-align: middle; }
-    .mi-st.ignored { background: #f1f3f8; color: #6b7183; }
-    .mi-st.handled { background: #e5f6ec; color: var(--added); }
-    .mi-acts { flex: 0 0 auto; display: flex; flex-direction: column; gap: 5px; min-width: 96px; }
+    .me-warn { padding: 12px 16px; border-radius: 9px; background: #fdf0e3;
+               color: #c2570a; font-size: 13px; line-height: 1.8; margin: 10px 0 0; }
+    /* ── a. 登录信息 ── */
+    .me-head { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+    .me-avatar { width: 56px; height: 56px; border-radius: 50%; object-fit: cover;
+                 border: 1px solid var(--border); background: #f0f2f7; flex: 0 0 auto; }
+    .me-avatar-txt { display: flex; align-items: center; justify-content: center;
+                     font-size: 22px; font-weight: 700; color: var(--primary);
+                     background: var(--primary-soft); }
+    .me-name { font-size: 18px; font-weight: 700; margin-bottom: 2px; }
+    .me-sub { font-size: 13px; color: var(--muted); }
+    .me-meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .me-actions { margin-left: auto; }
+    .me-btn { display: inline-block; padding: 8px 16px; border-radius: 8px;
+              font-size: 13px; text-decoration: none; white-space: nowrap; }
+    .me-btn:hover { text-decoration: none; opacity: .9; }
+    .me-btn-primary { background: var(--primary); color: #fff !important; }
+    .me-btn-plain { background: #fff; border: 1px solid var(--border); color: var(--text); }
+    .me-btn-plain:hover { background: #f7f9fc; }
+    .me-note { padding: 12px 16px; border-radius: 9px; background: #fdf0e3;
+               color: #c2570a; font-size: 13px; margin-bottom: 16px; }
+    /* ── b. 关注领域小条 ── */
+    .me-bar-h { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .me-bar-t { font-size: 15px; font-weight: 700; }
+    .me-bar-s { font-size: 12.5px; color: var(--muted); line-height: 1.8; }
+    .me-bar-h .me-btn { margin-left: auto; }
+    .me-chips { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0 0; align-items: center; }
+    .me-chip { font-size: 12px; color: #41485c; background: #fbfcff;
+               border: 1px solid var(--border); border-radius: 999px; padding: 3px 11px; }
+    .me-chip.plain { background: #f1f3f8; color: #6b7183; }
+    .me-chip b { color: var(--primary); }
+    .me-pv { font-size: 12.5px; color: var(--muted); line-height: 1.85; }
+    .me-pv b { color: var(--primary); font-size: 13px; }
+    /* ── c. 两张问题卡片：各自的页签 / 数据卡 / 明细 ── */
+    .mi-stats { margin: 12px 0 14px; }
+    .mi-stats .stat-card { padding: 12px 20px; }
+    .mi-stats .stat-card .num { font-size: 22px; }
+    .mi-stats .stat-card .label { font-size: 12px; }
+    .mi-rows { margin-top: 0; }
+    .mi-rows td { vertical-align: top; }
+    .mi-rows tr.ignored, .mi-rows tr.handled { opacity: .62; }
+    .mi-type { width: 168px; }
+    .mi-type .badge { margin-bottom: 4px; }
+    .mi-title { font-size: 13px; font-weight: 600; line-height: 1.55; word-break: break-word; }
+    .mi-title a { color: var(--primary); }
+    .mi-key { font-size: 11px; color: var(--muted); word-break: break-all; margin-top: 2px;
+              font-family: ui-monospace, "SF Mono", "Cascadia Mono", monospace; }
+    .mi-sum { font-size: 12.5px; color: #41485c; line-height: 1.6; word-break: break-word; }
+    .mi-extra { color: var(--muted); word-break: break-word; }
+    .mi-meta { font-size: 11.5px; color: var(--muted); line-height: 1.7; word-break: break-word; }
+    .mi-acts { display: flex; flex-direction: column; gap: 6px; width: 128px; }
     .mi-f { margin: 0; }
     .mi-btn { border: 1px solid var(--border); background: #fff; border-radius: 7px;
-              padding: 4px 11px; font-size: 12px; cursor: pointer; color: var(--text);
+              padding: 5px 11px; font-size: 12px; cursor: pointer; color: var(--text);
               font-family: inherit; white-space: nowrap; width: 100%; }
     .mi-btn:hover { border-color: #c9d4ee; background: #f7f9ff; }
     .mi-btn.on { background: #f1f3f8; color: #8a90a0; }
     .mi-btn.hd { color: var(--added); border-color: #cbe8d8; }
     .mi-btn.hd.on { background: #eef9f3; }
-    .mi-sub { margin: 0 14px 10px; font-size: 12px; color: var(--muted); }
+    .mi-na { font-size: 11.5px; color: var(--muted); }
+    .mi-sub { margin: 10px 0 2px; font-size: 12.5px; color: var(--muted); }
     .mi-sub > summary { cursor: pointer; padding: 6px 0; }
-    .mi-sub .mi-list { padding: 0 0 4px; }
-    .mi-empty { font-size: 12.5px; color: var(--muted); padding: 4px 14px 12px; }
-    .mi-more { font-size: 12px; color: var(--muted); padding: 4px 14px 10px; }
-    .mi-foot { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.85; }
-    .mi-modsum { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
-    .mi-chip { font-size: 12px; color: #41485c; background: #fff;
-               border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px; }
-    .mi-chip b { color: var(--deleted); }
-    .mi-chip .m { color: var(--muted); }
-    .mi-hd { width: 100%; border-collapse: collapse; }
-    .mi-hd th, .mi-hd td { font-size: 12px; padding: 6px 8px; text-align: left;
-                           border-bottom: 1px solid var(--border); }
-    .mi-hd th { background: #f7f9fc; color: #41485c; }
-    /* ── 忽略/已处理 确认弹框（与任务详情页同款站内弹框）── */
-    .ign-mask { position: fixed; inset: 0; z-index: 100; padding: 20px;
+    .mi-sub .mi-rows { margin-top: 4px; }
+    .mi-empty { font-size: 12.5px; color: var(--muted); padding: 12px 2px 16px; }
+    .mi-more { font-size: 12px; color: var(--muted); padding: 8px 0 4px; }
+    .mi-foot { font-size: 12px; color: var(--muted); margin-top: 14px; line-height: 1.9;
+               border-top: 1px dashed var(--border); padding-top: 12px; }
+    .link-item.is-ign { opacity: .5; }
+    /* 缩略图可点击放大（点击后站内 lightbox 预览，与模块页的 thumb 同款） */
+    a.lb { display: inline-block; line-height: 0; }
+    .lb-mask { position: fixed; inset: 0; z-index: 120; padding: 24px;
+               background: rgba(15,23,42,.86); display: flex; align-items: center;
+               justify-content: center; cursor: zoom-out; }
+    .lb-mask[hidden] { display: none; }
+    .lb-mask img { max-width: 94vw; max-height: 90vh; border-radius: 10px;
+                   background: #fff; box-shadow: 0 24px 60px rgba(0,0,0,.45); }
+    .lb-hint { position: fixed; bottom: 18px; left: 0; right: 0; text-align: center;
+               color: rgba(255,255,255,.75); font-size: 12px; }
+    /* ── 忽略/已处理 站内确认弹框（与任务详情页同款）── */
+    .ign-mask { position: fixed; inset: 0; z-index: 130; padding: 20px;
         background: rgba(15,23,42,.45); display: flex; align-items: center;
         justify-content: center; font-weight: normal; }
     .ign-mask[hidden] { display: none; }
@@ -184,6 +124,8 @@
         <p style="margin-top:14px;"><a href="/">← 返回首页</a></p>
     </div>
 {% elif current_user %}
+
+{# ══ a. 登录信息 ═══════════════════════════════════════════════════ #}
     <div class="me-card">
         <div class="me-head">
             {% if current_user.avatar_url %}
@@ -196,7 +138,7 @@
                 <div class="me-name">{{ current_user.name or current_user.login }}</div>
                 <div class="me-sub">GitCode：<span class="mono">{{ current_user.login }}</span></div>
                 {% if profile %}
-                <div class="me-meta">首次登录 {{ profile.created_at }} · 最近登录 {{ profile.last_login_at or profile.created_at }}</div>
+                <div class="me-meta">最近登录 {{ profile.last_login_at or profile.created_at }}</div>
                 {% endif %}
             </div>
             <div class="me-actions">
@@ -205,280 +147,290 @@
         </div>
     </div>
 
+{# ══ b. 关注领域小条 + 入口 ══════════════════════════════════════════ #}
     <div class="me-card">
-        <h2>🎯 关注领域{% if area_total %}<span class="me-badge">已关注 {{ area_total }} 项</span>{% else %}<span class="me-badge">全部</span>{% endif %}</h2>
-        <p class="me-hint">这里只读回显当前配置（两级：① 关注的模块 ＋ ② 关注的文档范围）。
-        要改动请点右上角的「设置关注领域 →」，在独立配置页里选好保存。</p>
+        <div class="me-bar-h">
+            <span class="me-bar-t">🎯 关注领域</span>
+            {% if area_total %}
+            <span class="me-badge">已关注 {{ area_total }} 项</span>
+            {% else %}
+            <span class="me-badge">未设置 = 全部</span>
+            {% endif %}
+            <span class="me-bar-s">
+                模块：{% if scope.modules %}{% for mk in scope.modules %}{{ issue_labels.get(mk, module_labels.get(mk, mk)) }}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}全部{% endif %}
+                ｜ 文档：{% if scope_summary %}{% for g in scope_summary %}{{ g.label }}{% if g.narrowed %} → {{ g.detail }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}全部{% endif %}
+                ｜ 语言：{% if lang_summary %}{% for l in lang_summary %}{{ l.label }}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}全部{% endif %}
+            </span>
+            <a class="me-btn me-btn-primary" href="/me/areas">⚙️ 设置关注领域 →</a>
+        </div>
+
+        {% if preview %}
+        <p class="me-pv" style="margin-top:8px;">
+            📐 命中 <b>{{ preview.hit.count_fmt }}</b> 篇 / 全站 {{ preview.total_docs_fmt }} 篇
+            {%- if preview.all_docs %}（未设文档范围 = 全部）{% endif %}
+        </p>
+        {% else %}
+        <p class="me-pv" style="margin-top:8px;">📐 口径预览暂不可用（统计出错），不影响下面的问题列表。</p>
+        {% endif %}
 
         {% with msgs = get_flashed_messages(with_categories=true) %}
         {% if msgs %}{% for cat, m in msgs %}<div class="me-flash {{ cat }}">{{ m }}</div>{% endfor %}{% endif %}
         {% endwith %}
-
-        <div class="me-dim">
-            <div class="me-dim-h">
-                <span class="t">① 关注的模块</span>
-                <span class="n">{{ scope.modules | length }} 项{% if not scope.modules %}（未限制 = 全部模块）{% endif %}</span>
-            </div>
-            <div class="me-dim-hint">只影响「我的问题」展示哪几类检查的问题；与文档范围是【且】。</div>
-            <div class="me-tags">
-                {% for mk in scope.modules %}
-                <span class="me-tag" style="cursor:default;">{{ module_labels.get(mk, mk) }}</span>
-                {% else %}
-                <span class="me-tag-ph">未限制（全部 4 个模块）</span>
-                {% endfor %}
-            </div>
-        </div>
-
-        <div class="me-dim">
-            <div class="me-dim-h">
-                <span class="t">② 关注的文档范围</span>
-                <span class="n">{{ scope_summary | length }} 个大类{% if not scope_summary %}（未限制 = 全部文档）{% endif %}</span>
-            </div>
-            <div class="me-dim-hint">大类之间是【或】；大类里选了细分则把该大类<b>收窄</b>到细分范围（不再包含该大类的其余文档）。</div>
-            <div class="me-tags">
-                {% for g in scope_summary %}
-                <span class="me-tag" style="cursor:default;">{{ g.label }}{% if g.narrowed %} → {{ g.detail }}{% else %}（全部）{% endif %}</span>
-                {% else %}
-                <span class="me-tag-ph">未限制（全部文档）</span>
-                {% endfor %}
-            </div>
-        </div>
-
-        <div class="me-add" style="margin-top:14px;">
-            <a class="me-btn me-btn-primary" href="/me/areas">⚙️ 设置关注领域 →</a>
-            <span class="me-hint" style="font-size:12.5px;">两级配置：先选模块，再选文档范围（勾「指南」/「API 参考」可再细分 Kit / IDE 分组）。</span>
-        </div>
     </div>
 
-    <div class="me-card">
-        <h2>📐 口径预览<span class="me-badge">收窄语义</span></h2>
-        <p class="me-hint">{{ scope_rule }}</p>
-
-        {% if not preview %}
-        <div class="me-cmp-foot">口径预览暂不可用（统计出错），不影响上面的关注领域配置。</div>
-        {% else %}
-        {% if preview.all_docs %}
-        <div class="me-warn" style="background:#fdf0e3;color:#c2570a;">ℹ️ 未设文档范围，默认全部——全站 {{ preview.total_docs_fmt }} 篇文档都在范围内。到「设置关注领域」勾上大类（可再细分 Kit / IDE 分组）后，这里会算出收窄后的命中数。</div>
-        {% endif %}
-        <div class="me-cmp">
-            <div class="me-cmp-col">
-                <div class="me-cmp-h">
-                    <span class="me-cmp-tag union">收窄</span>
-                    <span class="me-cmp-name">命中文档</span>
-                    <span class="me-cmp-op">→</span>
-                    <span class="me-cmp-n">{{ preview.hit.count_fmt }} 篇</span>
-                </div>
-                <div class="me-cmp-sub">全站 {{ preview.total_docs_fmt }} 篇{% if preview.all_docs %}（未设范围 = 全部）{% endif %}；模块不参与文档数（它不是文档属性）</div>
-                {% if preview.hit.samples %}
-                <ul class="me-samples">
-                    {% for s in preview.hit.samples %}
-                    <li>
-                        <span class="t">{{ s.title }}</span>
-                        <span class="m">catalog: {{ s.catalog }}{% if s.kit %} · Kit: {{ s.kit }}{% endif %}{% if s.ide %} · IDE: {{ s.ide }}{% endif %}{% if not (s.kit or s.ide) %} · Kit/IDE: 空{% endif %}</span>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% else %}
-                <div class="me-cmp-none">没有命中的文档（示例为空）。</div>
-                {% endif %}
-            </div>
-            {% if preview.groups %}
-            <div class="me-cmp-col">
-                <div class="me-cmp-h">
-                    <span class="me-cmp-tag intersection">明细</span>
-                    <span class="me-cmp-name">各大类</span>
-                </div>
-                <table class="mi-hd" style="margin-top:6px;">
-                    <thead><tr><th>大类</th><th>口径</th><th>篇数</th></tr></thead>
-                    <tbody>
-                    {% for g in preview.groups %}
-                    <tr>
-                        <td>{{ g.label }}</td>
-                        <td>{% if g.narrowed %}收窄为{% for s in g.subs %}{{ s.value }}{% if not loop.last %}、{% endif %}{% endfor %}{% else %}整个大类{% endif %}</td>
-                        <td>{{ g.count_fmt }}</td>
-                    </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% endif %}
-        </div>
-        <div class="me-cmp-foot">
-            {% if preview.groups %}
-            计算口径（与「我的问题」取数同一段 SQL）：{% for g in preview.groups %}（catalog = {{ g.catalog }}{% if g.narrowed %} 且 {% for s in g.subs %}{% if s.axis == 'Kit' %}kit{% else %}ide{% endif %} = {{ s.value }}{% if not loop.last %} 或 {% endif %}{% endfor %}{% endif %}）{% if not loop.last %} 或 {% endif %}{% endfor %}。
-            {% else %}未选任何文档范围，按「全部文档」（{{ preview.total_docs_fmt }} 篇）计。{% endif %}
-            未选模块 = 全部 4 个模块（模块只筛问题类型，不参与文档数）。
-        </div>
-        {% endif %}
-    </div>
-
-    {% macro mi_rows(items) %}
-    <ul class="mi-list">
-        {% for it in items %}
-        <li class="mi-row {{ it.status }}">
-            <div class="mi-main">
-                <div class="mi-title">
-                    {% if it.url %}<a href="{{ it.url }}" target="_blank" rel="noopener">{{ it.title }}</a>{% else %}{{ it.title }}{% endif %}
-                    {% if it.status == 'ignored' %}<span class="mi-st ignored">已忽略</span>
-                    {% elif it.status == 'handled' %}<span class="mi-st handled">已处理</span>
-                    {% elif not it.can_act %}<span class="mi-st ignored">不支持忽略</span>{% endif %}
-                </div>
-                <div class="mi-sum">问题：{{ it.summary }}{% if it.extra %} · <span class="mi-extra">{{ it.extra }}</span>{% endif %}</div>
-                <div class="mi-meta"><span class="mi-mod">{{ it.module_label }}</span>
-                    · catalog: {{ it.catalog or '—' }} · Kit: {{ it.kit or '空' }} · IDE: {{ it.ide or '空' }}{% if it.lang %} · {{ it.lang }}{% endif %}</div>
-            </div>
-            {% if it.can_act %}
-            <div class="mi-acts">
-                <form class="mi-f" method="post" action="/me/issue">
-                    <input type="hidden" name="run_id" value="{{ it.run_id }}">
-                    <input type="hidden" name="item_id" value="{{ it.id }}">
-                    <button class="mi-btn {{ 'on' if it.all_ignored else '' }}" name="act"
-                            value="{{ 'unignore' if it.all_ignored else 'ignore' }}"
-                            data-mode="{{ 'restore' if it.all_ignored else 'ignore' }}"
-                            data-what="{{ it.title|e }}" data-n="{{ it.n_probs }}"
-                            title="{{ '点击恢复：这些问题重新参与检查与统计' if it.all_ignored else '点击忽略（所有文档里都不再报，全局生效）' }}">{{ '↩️ 恢复忽略' if it.all_ignored else '🚫 忽略' }}</button>
-                </form>
-                <form class="mi-f" method="post" action="/me/issue">
-                    <input type="hidden" name="run_id" value="{{ it.run_id }}">
-                    <input type="hidden" name="item_id" value="{{ it.id }}">
-                    <button class="mi-btn hd {{ 'on' if it.all_handled else '' }}" name="act"
-                            value="{{ 'unhandle' if it.all_handled else 'handle' }}"
-                            data-mode="{{ 'restore' if it.all_handled else 'handle' }}"
-                            data-what="{{ it.title|e }}" data-n="{{ it.n_probs }}"
-                            title="{{ '点击撤销「已处理」：重新计入「仍存在」' if it.all_handled else '点击标记「已处理」（全局生效，不再计入「仍存在」）' }}">{{ '↩️ 撤销已处理' if it.all_handled else '✅ 已处理' }}</button>
-                </form>
-            </div>
-            {% endif %}
-        </li>
+{# ── 列表 / 页签 / 数据卡 三个宏：两张卡片共用（列 = 该模块页的 item_columns）── #}
+    {% macro me_tabs(tabs, active_key, seg, dt_key, ft_key) %}
+    {% if tabs %}
+    <div class="tabs">
+        {% for t in tabs %}
+        <a class="tab {{ 'active' if t.key == active_key else '' }}"
+           href="/me?dt={{ t.key if seg == 'daily' else dt_key }}&amp;ft={{ t.key if seg == 'full' else ft_key }}#me-{{ seg }}"
+           title="切到「{{ t.label }}」">
+            {{ t.icon }} {{ t.label }}<span class="tab-n">{{ "{:,}".format(t.n_open) }}</span>
+        </a>
         {% endfor %}
-    </ul>
+    </div>
+    {% endif %}
     {% endmacro %}
 
-    {% macro mi_group(g, key, show_src=false) %}
-    <details class="mi-grp" data-k="{{ key }}"{% if g.n_open %} open{% endif %}>
-        <summary>
-            <span class="mi-gt">{{ g.icon }} {{ g.label }}</span>
-            <span class="mi-gn">仍存在 <b>{{ g.n_open }}</b> · 已忽略 {{ g.n_ignored }} · 已处理 {{ g.n_handled }}{% if g.n_normal %} · 本次正常 {{ g.n_normal }}{% endif %}{% if g.n_out %} · 领域外 {{ g.n_out }}{% endif %}</span>
-            <span class="mi-gtime">{% if show_src %}{{ g.source }}{% else %}{{ g.run_at or '暂无成功检查' }}{% endif %}</span>
-        </summary>
-        {% if g.open %}{{ mi_rows(g.open) }}{% else %}
-        <div class="mi-empty">{% if not g.run_id %}该模块还没有成功检查记录。{% else %}关注领域内没有待处理的问题。{% endif %}</div>
-        {% endif %}
-        {% if g.open_more %}<div class="mi-more">还有 {{ g.open_more }} 条未展开，<a href="/{{ g.module }}/{% if g.run_id %}run/{{ g.run_id }}{% endif %}">到「{{ g.label }}」页看全部 →</a></div>{% endif %}
-        {% if g.n_ignored %}
-        <details class="mi-sub" data-k="{{ key }}-i">
-            <summary>已忽略 {{ g.n_ignored }} 条（不计入「仍存在」，可恢复）</summary>
-            {{ mi_rows(g.ignored) }}
-            {% if g.ignored_more %}<div class="mi-more">还有 {{ g.ignored_more }} 条未展开。</div>{% endif %}
-        </details>
-        {% endif %}
-        {% if g.n_handled %}
-        <details class="mi-sub" data-k="{{ key }}-h">
-            <summary>已处理 {{ g.n_handled }} 条（不计入「仍存在」，可撤销）</summary>
-            {{ mi_rows(g.handled) }}
-            {% if g.handled_more %}<div class="mi-more">还有 {{ g.handled_more }} 条未展开。</div>{% endif %}
-        </details>
-        {% endif %}
-    </details>
+    {% macro me_stats(g) %}
+    <div class="stats mi-stats">
+        <div class="stat-card">
+            <div class="num" style="color:{{ 'var(--deleted)' if g.n_open else 'var(--added)' }}">{{ "{:,}".format(g.n_open) }}</div>
+            <div class="label">仍存在</div>
+        </div>
+        <div class="stat-card">
+            <div class="num" style="color:#6b7183">{{ "{:,}".format(g.n_ignored) }}</div>
+            <div class="label">已忽略</div>
+        </div>
+        <div class="stat-card">
+            <div class="num" style="color:var(--added)">{{ "{:,}".format(g.n_handled) }}</div>
+            <div class="label">已处理</div>
+        </div>
+        <div class="stat-card">
+            <div class="num" style="color:var(--primary)">{{ "{:,}".format(g.n_normal) }}</div>
+            <div class="label">本次正常</div>
+        </div>
+        <div class="stat-card">
+            <div class="num" style="color:{{ 'var(--modified)' if g.n_out else 'var(--muted)' }}">{{ "{:,}".format(g.n_out) }}</div>
+            <div class="label">领域外</div>
+        </div>
+        <div class="stat-card">
+            <div class="num" style="font-size:14px">{{ g.run_at or '—' }}</div>
+            <div class="label">{% if g.run_id %}检查时间（run #{{ g.run_id }}）{% else %}还没有成功检查{% endif %}</div>
+        </div>
+    </div>
     {% endmacro %}
 
-    <div class="me-card" id="me-issues">
-        <h2>📋 我的问题{% if daily_totals and daily_totals.n_open %}<span class="me-badge">增量仍存在 {{ daily_totals.n_open }} 条</span>{% endif %}{% if handled_total %}<span class="me-badge">已处理 {{ handled_total }} 条</span>{% endif %}</h2>
-        <p class="me-hint">{{ issue_hint }}</p>
-
-        {% if not has_areas %}
-        <div class="me-warn" style="background:#fdf0e3;color:#c2570a;">
-            ℹ️ <b>未设关注领域</b>——当前按「默认全部」展示（全部模块 + 全站文档的问题都在范围内）。
-            想只看自己负责的范围，请点上面的「⚙️ 设置关注领域 →」选上 关注的模块 / 关注的文档范围
-            （不选 = 不限制；大类之间是【或】，大类里选细分则把该大类【收窄】到细分）。
-        </div>
-        {% endif %}
-
-        {# ── ① 每日增量：各模块最新一次成功 run ── #}
-        <div class="mi-sec first">
-            <div class="mi-sec-h">
-                <span class="t">① 每日增量</span>
-                <span class="n">各模块最新一次成功检查里、落在关注领域内的条目（按模块分组）</span>
-                <span class="mi-sec-num">仍存在 <b>{{ daily_totals.n_open or 0 }}</b> 条 · 已忽略 {{ daily_totals.n_ignored or 0 }} · 已处理 {{ daily_totals.n_handled or 0 }}</span>
-            </div>
-            {% for g in daily %}{{ mi_group(g, 'd-' ~ g.module) }}{% endfor %}
-            {% if not daily %}<div class="mi-empty">没有可展示的检查模块——「关注的模块」一项都没选。</div>{% endif %}
-        </div>
-
-        {# ── ② 全量：跨 run 按 item_key 去重后仍存在（默认折叠）── #}
-        <div class="mi-sec">
-            <div class="mi-sec-h">
-                <span class="t">② 全量</span>
-                <span class="n">跨 run 按 item_key 去重后仍存在的条目（默认折叠）</span>
-                <span class="mi-sec-num">仍存在 <b>{{ full_totals.n_open or 0 }}</b> 条 · 已忽略 {{ full_totals.n_ignored or 0 }} · 已处理 {{ full_totals.n_handled or 0 }}</span>
-            </div>
-            {% if full %}
-            {# 按模块汇总数字：折叠状态下也可见（明细在下面的 details 里） #}
-            <div class="mi-modsum">
-                {% for g in full %}
-                <span class="mi-chip">{{ g.icon }} {{ g.label }} 仍存在 <b>{{ g.n_open }}</b>{% if g.n_ignored %} · <span class="m">已忽略 {{ g.n_ignored }}</span>{% endif %}{% if g.n_handled %} · <span class="m">已处理 {{ g.n_handled }}</span>{% endif %}</span>
-                {% endfor %}
-            </div>
-            {% endif %}
-            <details class="mi-grp" data-k="full">
-                <summary>
-                    <span class="mi-gt">展开全量明细</span>
-                    <span class="mi-gn">{% if recheck_run %}来源：🗓️ 当前全量问题 #{{ recheck_run.id }}（{{ recheck_run.run_at }}）{% else %}来源：各模块最新一次成功 run{% endif %} · 图片 OCR / 英文文档 / 链接健康取复核结果，系统合并整改取整站扫描</span>
-                </summary>
-                <div style="padding:0 14px 12px;">
-                {% for g in full %}{{ mi_group(g, 'f-' ~ g.module, true) }}{% endfor %}
-                {% if not full %}<div class="mi-empty">没有可展示的检查模块。</div>{% endif %}
-                </div>
-            </details>
-        </div>
-
-        {# ── ③ 已处理：单列计数 + 可展开列表 ── #}
-        <div class="mi-sec">
-            <div class="mi-sec-h">
-                <span class="t">③ 已处理</span>
-                <span class="n">第 4 个状态：全局生效、不计入「仍存在」，保留可见、可随时撤销</span>
-                <span class="mi-sec-num">已处理 <b>{{ handled_total }}</b> 条</span>
-            </div>
-            {% if handled_rows %}
-            <details class="mi-grp" data-k="handled">
-                <summary><span class="mi-gt">展开已处理清单</span><span class="mi-gn">{{ handled_total }} 条</span></summary>
-                <div style="padding:0 14px 12px; overflow-x:auto;">
-                    <table class="mi-hd">
-                        <thead><tr><th>模块</th><th>问题类型</th><th>目标</th><th>处理人</th><th>时间</th><th></th></tr></thead>
-                        <tbody>
-                        {% for h in handled_rows %}
-                        <tr>
-                            <td>{{ h.module_label }}</td>
-                            <td>{{ h.kind_label }}</td>
-                            <td style="word-break:break-all; max-width:320px;">{{ h.target }}</td>
-                            <td>{{ h.created_by or '—' }}</td>
-                            <td class="mono">{{ h.created_at }}</td>
-                            <td>
-                                <form class="mi-f" method="post" action="/me/issue">
-                                    <input type="hidden" name="handled_id" value="{{ h.id }}">
-                                    <button class="mi-btn hd on" name="act" value="unhandle_id"
-                                            data-mode="restore" title="撤销这条「已处理」">↩️ 撤销</button>
-                                </form>
-                            </td>
-                        </tr>
+    {# 明细表格：类型 / 各模块 item_columns（顺序一致）/ 操作；图片列渲染缩略图可放大 #}
+    {% macro me_rows(rows, g, dt_key, ft_key) %}
+    <table class="mi-rows">
+        <thead>
+            <tr>
+                <th class="mi-type">类型</th>
+                {% for f, label, render in g.columns %}<th>{{ label }}</th>{% endfor %}
+                <th style="width:150px">操作</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for it in rows %}
+        <tr class="{{ it.status }}">
+            <td class="mi-type">
+                {% if it.status == 'ignored' %}<span class="badge badge-info">已忽略</span>
+                {% elif it.status == 'handled' %}<span class="badge badge-added">已处理</span>
+                {% else %}<span class="badge badge-failed">待处理</span>{% endif %}
+                {% if it.n_probs > 1 %}<span class="mi-na">×{{ it.n_probs }} 项</span>{% endif %}
+                <div class="mi-sum">问题：{{ it.summary }}</div>
+                {% if it.extra %}<div class="mi-sum mi-extra">{{ it.extra }}</div>{% endif %}
+            </td>
+            {% for f, label, render in g.columns %}
+            <td>
+                {% if render == 'link_list' %}
+                    {% set lrows = it.links.get(f) or [] %}
+                    {% if lrows %}
+                        {% for l in lrows %}
+                        <div class="link-item{{ ' is-ign' if l.ignored else '' }}">
+                            <a class="issue-link" href="{{ l.url }}" target="_blank" rel="noopener">{% if l.status %}[{{ l.status }}] {% endif %}{{ (l.text or l.url)[:52] }} ↗</a>
+                            {% if l.ignored %}<span class="mi-na">已忽略</span>{% endif %}
+                        </div>
                         {% endfor %}
-                        </tbody>
-                    </table>
+                    {% else %}<span class="mi-na">—</span>{% endif %}
+                {% elif f == 'image' and it.detail.get(f) %}
+                    {% set src = '/media/' ~ it.detail[f].replace('data/', '', 1) %}
+                    <a class="lb" href="{{ src }}" target="_blank" title="点击放大">
+                        <img class="thumb" src="{{ src }}" alt="图片" loading="lazy"></a>
+                {% elif f == 'ocr_text' %}
+                    <span class="ocr-text">{{ it.detail.get(f, '')|highlight_cjk|safe }}</span>
+                {% elif f == 'lang' %}
+                    {{ lang_labels.get(it.detail.get(f), it.detail.get(f)) or '—' }}
+                {% elif render == 'link' %}
+                    {% set lv = it.detail.get(f) or it.detail.get('target') %}
+                    {% if lv %}<a class="issue-link" href="{{ lv }}" target="_blank" rel="noopener">{{ lv[:60] }} ↗</a>{% else %}<span class="mi-na">—</span>{% endif %}
+                {% elif f == 'url' or f == 'doc_url' %}
+                    {% set du = it.detail.get('url') or it.detail.get('doc_url') or it.url %}
+                    <div class="mi-title">{% if du %}<a href="{{ du }}" target="_blank" rel="noopener">{{ it.title }}</a>{% else %}{{ it.title }}{% endif %}</div>
+                    <div class="mi-key">{{ it.doc_key }}</div>
+                {% elif it.detail.get(f) is none or it.detail.get(f) == '' or it.detail.get(f) == [] %}
+                    <span class="mi-na">—</span>
+                {% else %}
+                    {{ it.detail.get(f, '')|fmt_value }}
+                {% endif %}
+            </td>
+            {% endfor %}
+            <td>
+                {% if it.can_act %}
+                <div class="mi-acts">
+                    <form class="mi-f" method="post" action="/me/issue">
+                        <input type="hidden" name="run_id" value="{{ it.run_id }}">
+                        <input type="hidden" name="item_id" value="{{ it.id }}">
+                        <input type="hidden" name="dt" value="{{ dt_key }}">
+                        <input type="hidden" name="ft" value="{{ ft_key }}">
+                        <button class="mi-btn {{ 'on' if it.all_ignored else '' }}" name="act"
+                                value="{{ 'unignore' if it.all_ignored else 'ignore' }}"
+                                data-mode="{{ 'restore' if it.all_ignored else 'ignore' }}"
+                                data-what="{{ it.title|e }}" data-n="{{ it.n_probs }}"
+                                title="{{ '点击恢复：这些问题重新参与检查与统计' if it.all_ignored else '点击忽略（所有文档里都不再报，全局生效）' }}">{{ '↩️ 恢复忽略' if it.all_ignored else '🚫 忽略' }}</button>
+                    </form>
+                    <form class="mi-f" method="post" action="/me/issue">
+                        <input type="hidden" name="run_id" value="{{ it.run_id }}">
+                        <input type="hidden" name="item_id" value="{{ it.id }}">
+                        <input type="hidden" name="dt" value="{{ dt_key }}">
+                        <input type="hidden" name="ft" value="{{ ft_key }}">
+                        <button class="mi-btn hd {{ 'on' if it.all_handled else '' }}" name="act"
+                                value="{{ 'unhandle' if it.all_handled else 'handle' }}"
+                                data-mode="{{ 'restore' if it.all_handled else 'handle' }}"
+                                data-what="{{ it.title|e }}" data-n="{{ it.n_probs }}"
+                                title="{{ '点击撤销「已处理」：重新计入「仍存在」' if it.all_handled else '点击标记「已处理」（全局生效，不再计入「仍存在」）' }}">{{ '↩️ 撤销已处理' if it.all_handled else '✅ 已处理' }}</button>
+                    </form>
                 </div>
-            </details>
-            {% else %}<div class="mi-empty">还没有「已处理」记录。</div>{% endif %}
-        </div>
+                {% else %}<span class="mi-na">无可操作问题项</span>{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endmacro %}
 
-        <div class="mi-foot">
-            · 「仍存在」= 最新一次检查里还有、且没被忽略/处理掉的条目；<b>已忽略 / 已处理都是全局的</b>（谁先点谁生效，不按用户区分），
-            只做展示端过滤——run / items 原始数据不动，所以<b>恢复即时生效</b>，不必重跑检查。<br>
-            · 过滤按<b>收窄语义</b>：「关注的模块」与「关注的文档范围」是【且】；大类之间是【或】；
-            大类里选了细分就把该大类收窄到细分（例：指南 + ArkUI = 只看 ArkUI 的指南，不含指南的其余文档）；
-            本组「领域外 N 条」= 命中大类但落在细分之外的条目。<br>
-            · Kit / IDE 细分只有 <span class="mono">harmonyos-guides</span> 与 <span class="mono">harmonyos-references</span> 有值
-            （所以只有「指南」能细分 IDE 分组）；FAQ / 版本说明 / 最佳实践没有细分，勾上就是整个大类。<br>
-            · 全部忽略记录可在 <a href="/ignored/">🚫 已忽略问题</a> 页集中查看与恢复。
+    {% macro me_block(g, dt_key, ft_key, show_src=false) %}
+    {% if not g %}
+    <div class="mi-empty">没有可展示的检查模块（「关注的模块」可能一项都没选）。</div>
+    {% else %}
+    {{ me_stats(g) }}
+    {% if show_src and g.source %}<p class="me-hint" style="margin:-6px 0 10px;">来源：{{ g.source }}</p>{% endif %}
+    {% if g.open %}{{ me_rows(g.open, g, dt_key, ft_key) }}{% else %}
+    <div class="mi-empty">{% if not g.run_id %}该模块还没有成功检查记录。{% else %}关注领域内没有待处理的问题（本次检查 {{ g.checked }} 条，其中领域外 {{ g.n_out }} 条、正常 {{ g.n_normal }} 条）。{% endif %}</div>
+    {% endif %}
+    {% if g.open_more %}<div class="mi-more">还有 {{ g.open_more }} 条未展开，<a href="/{{ g.module }}/{% if g.run_id %}run/{{ g.run_id }}{% endif %}">到「{{ g.label }}」页看全部 →</a></div>{% endif %}
+    {% if g.n_ignored %}
+    <details class="mi-sub">
+        <summary>已忽略 {{ g.n_ignored }} 条（不计入「仍存在」，可恢复）</summary>
+        {{ me_rows(g.ignored, g, dt_key, ft_key) }}
+        {% if g.ignored_more %}<div class="mi-more">还有 {{ g.ignored_more }} 条未展开。</div>{% endif %}
+    </details>
+    {% endif %}
+    {% if g.n_handled %}
+    <details class="mi-sub">
+        <summary>已处理 {{ g.n_handled }} 条（不计入「仍存在」，可撤销）</summary>
+        {{ me_rows(g.handled, g, dt_key, ft_key) }}
+        {% if g.handled_more %}<div class="mi-more">还有 {{ g.handled_more }} 条未展开。</div>{% endif %}
+    </details>
+    {% endif %}
+    {% endif %}
+    {% endmacro %}
+
+    <div id="me-issues">
+    {% if not has_areas %}
+    <div class="me-card">
+        <div class="me-warn">
+            ℹ️ <b>还没设置关注领域</b>——按「默认全部」展示（{{ issue_modules | length }} 个模块 + 全站文档），不做筛选。
+            想只看自己负责的范围，点上面的「⚙️ 设置关注领域 →」。
         </div>
+    </div>
+    {% endif %}
+
+    {# ══ ① 每日增量问题（独立卡片）════════════════════════════════════ #}
+    <div class="me-card" id="me-daily">
+        <h2>① 每日增量问题
+            {% if daily_totals.n_open %}<span class="me-badge">仍存在 {{ daily_totals.n_open }} 条</span>{% endif %}
+        </h2>
+        <p class="me-hint">各模块<b>最新一次成功检查</b>的条目，按关注领域过滤；每模块一个页签，页签数字 = 仍存在。</p>
+        {% if daily_active %}
+        {{ me_tabs(daily_tabs, daily_tab, 'daily', daily_tab, full_tab) }}
+        {{ me_block(daily_active, daily_tab, full_tab) }}
+        {% else %}
+        <div class="mi-empty">没有可展示的检查模块（「关注的模块」可能一项都没选）。</div>
+        {% endif %}
+    </div>
+
+    {# ══ ② 全量问题（独立卡片）════════════════════════════════════════ #}
+    <div class="me-card" id="me-full">
+        <h2>② 全量问题
+            {% if full_totals.n_open %}<span class="me-badge">仍存在 {{ full_totals.n_open }} 条</span>{% endif %}
+        </h2>
+        <p class="me-hint">跨 run 去重后<b>仍存在</b>的条目：图片 OCR / 英文文档 / 链接健康取
+            {% if recheck_run %}<b>{{ recheck_run.run_at }}</b> 的复核结果{% else %}「当前全量问题」复核结果{% endif %}，
+            系统合并整改取整站扫描；每模块一个页签。</p>
+        {% if full_active %}
+        {{ me_tabs(full_tabs, full_tab, 'full', daily_tab, full_tab) }}
+        {{ me_block(full_active, daily_tab, full_tab, true) }}
+        {% else %}
+        <div class="mi-empty">没有可展示的检查模块（「关注的模块」可能一项都没选）。</div>
+        {% endif %}
+    </div>
+
+    {# ══ ③ 全局「已处理」清单（独立卡片，可撤销）══════════════════════ #}
+    <div class="me-card">
+        <h2>🗂️ 全局「已处理」清单{% if handled_total %}<span class="me-badge">{{ handled_total }} 条</span>{% endif %}</h2>
+        <p class="me-hint">全局生效、不计入「仍存在」，保留可见、可撤销。</p>
+        {% if handled_rows %}
+        <details class="mi-sub" style="margin-top:6px;">
+            <summary>展开 {{ handled_total }} 条记录</summary>
+            <table class="mi-rows">
+                <thead><tr><th style="width:14%">模块</th><th style="width:14%">问题类型</th><th>目标</th><th style="width:10%">处理人</th><th style="width:14%">时间</th><th style="width:96px"></th></tr></thead>
+                <tbody>
+                {% for h in handled_rows %}
+                <tr>
+                    <td class="mi-meta">{{ h.module_label }}</td>
+                    <td class="mi-meta">{{ h.kind_label }}</td>
+                    <td class="mi-key">{{ h.target }}</td>
+                    <td class="mi-meta">{{ h.created_by or '—' }}</td>
+                    <td class="mi-meta mono">{{ h.created_at }}</td>
+                    <td>
+                        <form class="mi-f" method="post" action="/me/issue">
+                            <input type="hidden" name="handled_id" value="{{ h.id }}">
+                            <input type="hidden" name="dt" value="{{ daily_tab }}">
+                            <input type="hidden" name="ft" value="{{ full_tab }}">
+                            <button class="mi-btn hd on" name="act" value="unhandle_id"
+                                    data-mode="restore" title="撤销这条「已处理」">↩️ 撤销</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </details>
+        {% else %}<div class="mi-empty">还没有「已处理」记录。</div>{% endif %}
+        <div class="mi-foot" style="margin-top:8px;border-top:none;padding-top:0;">
+            全部忽略记录见 <a href="/ignored/">🚫 已忽略问题</a> 页。
+        </div>
+    </div>
+    </div>
+
+    {# 规则说明：只留核心，细节收进折叠区 #}
+    <details class="mi-sub" style="padding:0 4px 20px;">
+        <summary>口径与状态说明</summary>
+        <div class="mi-foot" style="border-top:none;padding-top:8px;">
+            · <b>仍存在</b> = 最新一次检查里还有、且没被忽略 / 处理掉的条目；忽略与「已处理」都<b>全局生效</b>（谁先点谁生效），
+            只做展示端过滤——run / items 原始数据不动，<b>恢复即时生效</b>，不必重跑检查。<br>
+            · 过滤按<b>收窄语义</b>：模块 ⟷ 文档范围 ⟷ 语言是【且】；大类之间是【或】；大类里选了细分就把该大类收窄到细分
+            （例：指南 + ArkUI = 只看 ArkUI 的指南）；行内「领域外 N 条」= 命中大类但落在细分之外的条目。<br>
+            · 两张卡片各有模块页签（互不影响）；明细列与顺序和各模块页一致，图片列可点击放大；未设关注领域时不筛选。
+        </div>
+    </details>
+
+    <div class="lb-mask" id="lbMask" hidden>
+        <img id="lbImg" src="" alt="放大预览">
+        <div class="lb-hint" id="lbHint">点击空白处或按 Esc 关闭</div>
     </div>
 
     <div class="ign-mask" id="ignMask" hidden>
@@ -492,6 +444,22 @@
         </div>
     </div>
     <script>
+    /* 图片缩略图：点击放大（站内 lightbox；href 仍指向 /media/…，可按住 Ctrl 新开标签页）。 */
+    (function () {
+      var mask = document.getElementById('lbMask');
+      var img = document.getElementById('lbImg');
+      if (!mask || !img) return;
+      function closeLb() { mask.hidden = true; img.removeAttribute('src'); }
+      document.addEventListener('click', function (e) {
+        var a = e.target.closest ? e.target.closest('a.lb') : null;
+        if (a) { e.preventDefault(); img.src = a.getAttribute('href'); mask.hidden = false; return; }
+        if (e.target === mask || e.target.id === 'lbHint') closeLb();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !mask.hidden) closeLb();
+      });
+    })();
+
     /* 我的问题：忽略 / 已处理先弹站内确认框（恢复方向直接执行），确认后整页提交 → 服务端重算数字。 */
     (function () {
       var mask = document.getElementById('ignMask');
@@ -535,19 +503,9 @@
         e.preventDefault();
         openConfirm(btn, form);
       });
-      /* 记住展开状态：整页提交后仍保持原样（否则每次操作都要重新点开分组） */
-      var KEY = 'meIssuesOpen', st = {};
-      try { st = JSON.parse(sessionStorage.getItem(KEY) || '{}'); } catch (err) { st = {}; }
-      Array.prototype.forEach.call(document.querySelectorAll('details[data-k]'), function (d) {
-        var k = d.dataset.k;
-        if (st[k] !== undefined) d.open = !!st[k];
-        d.addEventListener('toggle', function () {
-          st[k] = d.open;
-          try { sessionStorage.setItem(KEY, JSON.stringify(st)); } catch (err) {}
-        });
-      });
     })();
     </script>
+
 {% else %}
     <div class="me-card">
         <h1>🔑 请先登录</h1>
