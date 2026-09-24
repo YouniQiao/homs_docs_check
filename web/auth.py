@@ -29,7 +29,7 @@ from flask import (Blueprint, current_app, redirect, render_template, request,
                    session)
 
 from db import IndexDB
-from me_pages import me_context
+from me_pages import me_context, page_args
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AUTH_ENV_PATH = BASE_DIR / ".auth.env"
@@ -272,15 +272,16 @@ def register_auth(app, db_path: str):
                 return _notice("登录功能尚未配置，暂时无法查看「我的」页面。")
             return redirect("/auth/login?next=/me")
         profile = None
-        # 问题列表两段各自的模块页签（P2c）：?dt= 每日增量 / ?ft= 全量问题
-        dt = (request.args.get("dt") or "").strip()
-        ft = (request.args.get("ft") or "").strip()
+        # 问题列表的模块页签：?ft= （旧 ?dt= 等价，均折算到 ft）
+        ft = (request.args.get("ft") or request.args.get("dt") or "").strip()
+        # 列表分区的页码：?fp/?fi/?fh（旧 ?dp/?di/?dh 当别名，见 page_args）
+        pages = page_args(request.args)
         db = IndexDB(db_path)
         try:
             if user.get("gitcode_id"):
                 profile = db.get_user(user["gitcode_id"])
             # 关注领域配置（P2a）：区选项 + 已选标签（选项来自 docs 表 DISTINCT）
-            areas_ctx = me_context(db, user, daily_tab=dt, full_tab=ft)
+            areas_ctx = me_context(db, user, tab=ft, pages=pages)
         finally:
             db.close()
         return render_template("me.html", current_user=user, profile=profile,

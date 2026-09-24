@@ -58,6 +58,10 @@
         <div class="label">{{ label }}</div>
     </div>
     {% endfor %}
+    <div class="stat-card">
+        <div class="num" style="font-size:15px">{{ run.started_at|fmt_time }}</div>
+        <div class="label">本次检查时间</div>
+    </div>
 </div>
 {% else %}
 <p class="subtitle">运行记录不存在</p>

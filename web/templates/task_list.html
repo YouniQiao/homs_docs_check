@@ -264,6 +264,12 @@
         <div class="num">{{ recheck_stats.rate }}%</div>
         <div class="label">解决率</div>
     </div>
+    {% if recheck_stats.run_at %}
+    <div class="stat-card">
+        <div class="num" style="font-size:15px">{{ recheck_stats.run_at|fmt_time }}</div>
+        <div class="label">本次检查时间</div>
+    </div>
+    {% endif %}
 </div>
 
 {% if recheck_modules %}

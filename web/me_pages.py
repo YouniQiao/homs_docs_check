@@ -22,15 +22,18 @@ module 不是 docs 的列，无法按 doc_key 判定，不参与文档数。
 
 注意：忽略与「已处理」都是**全局**的，不按用户区分（用户 2026-09 拍板）。
 
-「我的问题」（P2b，本文件）——**两张独立卡片**：
-  ① 每日增量（卡片 #me-daily）：各模块**最新一次成功 run** 的条目（日常 run 是增量的），
-     落在关注领域（**细分范围语义**）内的「问题条目」，**每个模块一个页签**；每条给「忽略 / 已处理」。
-  ② 全量问题（卡片 #me-full）：**跨 run 按 item_key 去重后仍存在**的条目——优先取
-     「当前全量问题」（module_key=recheck）最新一次成功 run 里该模块的条目（recheck 把历史
-     问题跨 run 去重后逐条复核，只写「仍存在」的）；recheck 不覆盖的模块（sysmerge）退回
-     该模块最新一次成功 run 的条目（整站全量扫描，天然是「当前全量」）。**同样每模块一个页签**。
-两张卡片**各自独立**的模块页签（P2c）：`?dt=<module>` / `?ft=<module>`，互不影响；
-  页签数字取该模块「仍存在」条数；写操作（忽略/已处理）后回跳保留两段页签（表单带 dt/ft）。
+「我的问题」（P2b，本文件）——**一条主列表**（2026-09 B 方案：原来的两段合并）：
+  单列表（卡片 #me-full，标题「📋 当前待处理（全量）」）= **跨 run 按 item_key 去重后仍存在**
+  的条目——优先取「当前全量问题」（module_key=recheck）最新一次成功 run 里该模块的条目
+  （recheck 把历史问题跨 run 去重后逐条复核，只写「仍存在」的）；recheck 不覆盖的模块
+  （sysmerge）退回该模块最新一次成功 run 的条目（整站全量扫描，天然是「当前全量」）。
+  recheck 之后的日常 run 条目也并入（否则「上次复核之后的新增问题」整段看不见），但
+  **只并入真正的问题项**（_daily_problem_item = 模块页 / 复核页口径：ocr 的 no_cn、
+  encheck 的 clean、linkcheck 只有被拒/服务端异常/不可达的文档、中文文档中含中文的图都不算）。
+  **每模块一个页签**；列表里**没有**历史/最新之分——所有还没解决、没忽略的问题都在这一条列表里。
+  「🆕 今日」行级标记：该条目（doc_key / item_key）或它的问题目标也出现在该模块
+  **最新一次成功 run**（= 今天这次检查）里时打标。两段的旧解释已去掉（同事不容易理解两段关系）。
+  写操作（忽略/已处理）后回跳保留当前页签（表单带 ft）。
   首次未设关注领域 = 不筛选（全部模块 + 全部文档）并给提示；设了才按领域过滤。
 明细列表**与各模块页一致**：列与顺序照搬该模块的 item_columns（如 ocr = 图片 / 语言 /
   识别文字 / 置信度 / 来源文档），图片列渲染缩略图（/media/…，去掉 data/ 前缀）并可点击放大。
@@ -38,13 +41,19 @@ module 不是 docs 的列，无法按 doc_key 判定，不参与文档数。
 被忽略或被处理完的条目不计入「仍存在」，并单列计数 + 可展开列表（可恢复/撤销）。
 
 路由：
-  GET  /me          「我的」（本文件只提供上下文；页面路由在 auth.py）?dt= / ?ft= 选页签
+  GET  /me          「我的」（本文件只提供上下文；页面路由在 auth.py）
+                    ?ft= 选模块页签（旧 ?dt= 仍认得，等价）；
+                    ?fp/?fi/?fh = 列表（仍存在 / 已忽略 / 已处理）各自的页码（见 page_args）
   GET  /me/areas   关注领域配置页（①语言 + ②模块 + ③文档范围；JS 按大类展开细分）
   POST /me/areas   整体保存（module / type / kit@* / ide@* / lang 六类 dim）→ 302 回 /me/areas
   POST /me/logic   已废弃的口径开关（只存不影响取数）→ 302 回 /me
   POST /me/issue   run_id + item_id + act=ignore|unignore|handle|unhandle → 302 回 /me
-                   （带 X-Requested-With: fetch 时改回 JSON：该条目最新状态 + 目标列表，
-                    供前端把「每日增量 / 全量」两段里同一目标的行 / 按钮 / 计数同步更新）
+                   （另支持与模块页对齐的 act=all（全部忽略 / 恢复全部）与
+                     act=toggle:<问题序号>（逐条链接忽略 ↔ 恢复，序号 = ignores.item_problems
+                     里的全局序号，服务端重算问题列表，不信任前端）；
+                     带 X-Requested-With: fetch 时改回 JSON：该条目最新状态 + 逐条问题状态
+                     （problems/changed）+ 目标列表，供前端把同一目标的行 / 按钮 / 计数 /
+                     逐条链接开关同步更新）
 """
 
 from __future__ import annotations
@@ -412,11 +421,31 @@ ISSUE_LABELS = {"ocr": "图片 OCR 检查", "encheck": "英文文档检查",
 ISSUE_ICONS = {"ocr": "🔍", "encheck": "🌐", "linkcheck": "🔗", "sysmerge": "🧩"}
 # 「当前全量问题」（recheck）覆盖的模块；其余（sysmerge）取自身最新一次成功 run
 RECHECK_MODULES = ("ocr", "encheck", "linkcheck")
-ISSUE_MAX_ITEMS = 30          # 每组最多渲染多少条（其余给「还有 N 条」+ 模块页链接）
+# ── 分页（用户 2026-09 要求，复刻模块页 task_detail 的翻页体验）──────────────
+# 单列表（原两段合并后）只需**一套**页码参数：fp（仍存在）/ fi（已忽略）/ fh（已处理）；
+#   每页 ISSUE_PAGE_SIZE 条，组内三个列表各自独立分页（各自的总数 / 总页数）；
+#   分页只对**当前页签**那个模块生效（用户一次只看一个模块），顶部数字 / 页签数字
+#   仍是该模块的真实总数（不受分页影响）。
+# 旧的两段参数（dp/di/dh，每日增量段）不再使用，但**不报错**：page_args 会把它当
+#   fp/fi/fh 的别名读一次（旧书签 / 旧链接仍然落在同一页），未知参数一律忽略。
+ISSUE_PAGE_SIZE = 30
+ISSUE_PAGE_PARAMS = {                 # 列表 → 页码 URL 参数名（单列表，只有一套）
+    "open": "fp", "ignored": "fi", "handled": "fh",
+}
+ISSUE_PAGE_ARGS = ("fp", "fi", "fh")            # 顺序 = 表单隐藏字段 / 回跳顺序
+# 旧参数 → 新参数（只在新的缺省时才读；保留旧链接可用，不破坏已有 URL）
+ISSUE_PAGE_ALIASES = {"fp": ("dp",), "fi": ("di",), "fh": ("dh",)}
+ISSUE_PAGE_SPAN = 5                   # 页码条里当前页左右各显示几个页码
+ISSUE_MAX_ITEMS = ISSUE_PAGE_SIZE     # 兼容旧名（语义已变为「每页条数」）
 ISSUE_HINT = ("""「仍存在」= 最新一次检查里还有、且没被忽略/处理掉的条目；"""
               """忽略 / 已处理都是全局的（谁先点谁生效），被处理完的不计入「仍存在」但保留可见，可随时恢复。""")
 
 # ── 明细列：照搬各模块页的 item_columns（/me 列表与模块页同一套列与顺序）──────
+# 例外（用户 2026-09 要求）：/me 列表里**不显示**这些列（模块页仍照常显示）。
+#   ocr 的「置信度」在「我的问题」里没用（要判断的是「图里有没有中文」），
+#   列少了宽度还给「识别文字」和「来源文档」，故按模块列名过滤掉。
+HIDDEN_COLUMNS = {"ocr": ("confidence",)}
+
 _COLUMNS_CACHE: dict | None = None
 
 
@@ -425,6 +454,7 @@ def item_columns(mk: str) -> list[tuple]:
 
     与模块页 framework._norm_columns 同一套规则：模块可定义二元组 (f, label)
     或三元组 (f, label, render)；渲染类型缺省 text。取不到配置时返回空（页面降级）。
+    再按 HIDDEN_COLUMNS 去掉该模块在 /me 列表里不展示的列。
     """
     global _COLUMNS_CACHE
     if _COLUMNS_CACHE is None:
@@ -435,8 +465,11 @@ def item_columns(mk: str) -> list[tuple]:
                 sys.path.insert(0, web_dir)
             from modules import MODULES
             for m in MODULES:
+                hide = tuple(HIDDEN_COLUMNS.get(m["key"], ()))
                 cols: list = []
                 for col in m.get("item_columns") or []:
+                    if col[0] in hide:      # /me 不展示的列（模块页仍有）
+                        continue
                     cols.append((col[0], col[1], col[2] if len(col) > 2 else "text"))
                 _COLUMNS_CACHE[m["key"]] = cols
         except Exception:  # noqa: BLE001 - 取不到列配置也不该让页面挂掉
@@ -445,14 +478,16 @@ def item_columns(mk: str) -> list[tuple]:
 
 
 def _link_rows(mk: str, detail: dict, probs: list) -> dict:
-    """link_list 列的渲染数据：{字段: [{text, url, status, ignored, handled}]}。
+    """link_list 列的渲染数据：{字段: [{idx, text, url, target, status, ignored, handled}]}。
 
-    与模块页一样逐条链接标忽略态（这里只读展示，操作仍走行级「忽略 / 已处理」按钮）。
+    与模块页一样逐条链接标忽略态；``idx`` = 该问题在 `ignores.item_problems` 里的
+    **全局序号**（与模块页 `.ign-mini` 的 data-idx 同一口径），前端按它提交
+    ``act=toggle:<idx>``，服务端据此重算问题列表；``target`` 供前端跨两段匹配同一条链接。
     """
     by_kind: dict = {}
-    for p in probs or []:
+    for idx, p in enumerate(probs or []):
         if p.get("inline"):
-            by_kind.setdefault(p["kind"], []).append(p)
+            by_kind.setdefault(p["kind"], []).append((idx, p))
     if not by_kind:
         return {}
     kind2field = {k: f for k, _l, _c, f in ignores.kinds_of(mk) if f}
@@ -463,10 +498,12 @@ def _link_rows(mk: str, detail: dict, probs: list) -> dict:
             continue
         raw = detail.get(f) or []
         rows: list = []
-        for i, p in enumerate(ps):
+        for i, (idx, p) in enumerate(ps):
             entry = raw[i] if i < len(raw) and isinstance(raw[i], dict) else {}
-            rows.append({"text": entry.get("text") or p.get("label") or "",
+            rows.append({"idx": idx,
+                         "text": entry.get("text") or p.get("label") or "",
                          "url": p.get("target") or entry.get("url") or "",
+                         "target": p.get("target") or "",
                          "status": entry.get("status") or "",
                          "ignored": bool(p.get("ignored")),
                          "handled": bool(p.get("handled"))})
@@ -509,7 +546,12 @@ def _latest_success_run(db, module_key: str) -> dict | None:
 
 
 def _run_items(db, run_id: int) -> list[dict]:
-    """某次 run 的条目；同一 item_key 只保留最后一条（= 跨 run/run 内去重口径）。"""
+    """某次 run 的条目；同一 item_key 只保留最后一条（= 跨 run/run 内去重口径）。
+
+    每条带 ``run_id``（= 这条 item 真正所属的 run）——「全量」列表会合并**多个 run**
+    的条目，忽略/已处理表单里的 ``run_id`` + ``item_id`` 必须成对，否则
+    ``POST /me/issue`` 的 `items WHERE id=? AND run_id=?` 查不到（操作报「条目不存在」）。
+    """
     out: dict = {}
     for iid, key, itype, dj in db._conn.execute(
             "SELECT id, item_key, item_type, detail_json FROM items"
@@ -518,9 +560,55 @@ def _run_items(db, run_id: int) -> list[dict]:
             detail = json.loads(dj or "{}")
         except Exception:  # noqa: BLE001
             detail = {}
-        out[key or f"#{iid}"] = {"id": iid, "item_key": key, "item_type": itype,
-                                 "detail": detail}
+        out[key or f"#{iid}"] = {"id": iid, "run_id": run_id, "item_key": key,
+                                 "item_type": itype, "detail": detail}
     return list(out.values())
+
+
+def _run_items_since(db, module_key: str, since_iso: str,
+                     problems_only: bool = False) -> list[dict]:
+    """复核 run **之后**该模块各次成功 run 的条目（跨 run 按 item_key 去重，保留最新一条）。
+
+    复核每周才跑一次，日常 run 是增量的；复核之后新发现/再检查的条目不在复核 run 里，
+    漏掉它们「全量」就会缺一段（用户实测：复核 #133=09-21 之后 09-22/09-23 的新增问题
+    全看不见）。这里按 ``started_at > since_iso``（严格晚于复核 run）捞日常 run，跨 run
+    同一 item_key 只留**更晚那次 run** 的那条（run.id 升序遍历 + 覆盖）。
+
+    ``problems_only=True``（全量列表用，见 _merge_recheck_items）：只保留**真正的问题项**
+    （判定 = _daily_problem_item，与模块页 / 复核页同口径）。日常 run 里大量非问题条目
+    （ocr 的 no_cn、encheck 的 clean、linkcheck 只有被拒/服务端异常/不可达的文档、
+    中文文档中含中文的图）并进来会撑大「本次检查 / 正常 / 领域外」计数、还会让「仍存在」
+    虚高，所以默认由全量列表关掉它们。
+    """
+    runs = db._conn.execute(
+        "SELECT id FROM runs WHERE module_key=? AND status='success'"
+        " AND started_at > ? ORDER BY id", (module_key, since_iso)).fetchall()
+    out: dict = {}
+    for (rid,) in runs:
+        for it in _run_items(db, rid):
+            if problems_only and not _daily_problem_item(module_key, it):
+                continue                      # 非问题条目：不并入全量
+            out[it["item_key"]] = it          # 更晚的 run 覆盖早的
+    return list(out.values())
+
+
+def _merge_recheck_items(db, rc_items: list, module_key: str,
+                         since_iso: str) -> list[dict]:
+    """全量条目 = 复核 run 的条目 ∪ 复核之后该模块日常 run 的**问题条目**（按 item_key 去重）。
+
+    复核条目优先（它们是「仍存在」的权威判定 + 带 doc_url），日常 run 里的同 key 不重复计。
+    复核 run 自身的条目**不过滤**（复核只写「仍存在」的问题项，本来就是问题）；
+    复核之后日常 run 的条目按 _daily_problem_item 过滤，只并入真正的问题项。
+    """
+    merged = list(rc_items)
+    seen = {it.get("item_key") for it in merged}
+    for it in _run_items_since(db, module_key, since_iso, problems_only=True):
+        if it.get("item_key") in seen:
+            continue
+        seen.add(it["item_key"])
+        merged.append(it)
+    return merged
+
 
 
 def _docs_meta(db, keys) -> dict:
@@ -586,6 +674,37 @@ def _is_problem_item(mk: str, item_type: str, detail: dict, probs: list) -> bool
     return mk in ("ocr", "encheck") and item_type == "error"
 
 
+def _daily_problem_item(mk: str, it: dict) -> bool:
+    """复核之后**日常 run** 的这条 item 是否算「问题项」（全量列表合并时据此过滤）。
+
+    「全量」= 复核 run 的条目 ∪ 复核之后各模块日常 run 的条目。日常 run 是增量的**全量扫描**，
+    里面绝大多数条目是正常的（ocr 的 no_cn、encheck 的 clean、linkcheck 只有
+    被拒/服务端异常/不可达的文档），把非问题项并进来会让「本次检查 N 条 / 正常 N 条 /
+    领域外 N 条」虚高，也会让「仍存在」虚高（中文文档的图含中文本来就是正常的）。
+
+    口径与**模块页 / 复核页一致**：
+      · ocr       —— 「英文文档 + 含中文」（has_cn，lang=en）或识别失败（item_type=error）。
+                     中文文档含中文是正常的，不算问题（与 recheck/recheck.py 收集历史问题、
+                     复核页 use「仍存在」的口径一致；模块页 OCR 默认筛选也是 lang=en + has_cn）。
+      · encheck   —— 含汉字 / 含标点 / 链接 URL 含中文 / 含中文链接（走 item_problems，clean 不算），
+                     或读取失败。
+      · linkcheck —— 界面展示的问题：断链 / 误链历史版本 / 锚点失效（走 item_problems）；
+                     只被拒 / 服务端异常 / 不可达的文档**不上界面** → 不算问题。
+      · sysmerge  —— 不走这里（全量取自身最新一次成功 run，见 issue_context）。
+    """
+    d = it.get("detail") or {}
+    itype = it.get("item_type") or ""
+    if mk == "ocr":
+        return itype == "error" or (
+            bool(d.get("image")) and d.get("lang") == "en"
+            and (itype == "has_cn" or d.get("has_cn") is True))
+    try:
+        probs = ignores.item_problems(mk, d, itype)
+    except Exception:  # noqa: BLE001 - 单条解析失败按「非问题」保守处理（不进全量列表）
+        return False
+    return _is_problem_item(mk, itype, d, probs)
+
+
 def _item_summary(mk: str, detail: dict, item_type: str, probs: list) -> tuple[str, str]:
     """(问题摘要, 补充信息)：摘要按问题类型聚合计数，补充信息给最有用的一行上下文。"""
     if not probs:
@@ -625,20 +744,44 @@ def _item_summary(mk: str, detail: dict, item_type: str, probs: list) -> tuple[s
     return summary, extra[:160]
 
 
+def _is_today(today: dict | None, doc_key: str, item_key: str, probs: list) -> bool:
+    """该条目是否算「今天这次检查」（= 该模块**最新一次成功 run** 的条目）。
+
+    ``today`` = {"docs": {doc_key/item_key…}, "targets": {问题目标…}, "disabled": bool}；
+    判定：条目的 doc_key / item_key 命中，或它的任一问题目标命中（linkcheck 的逐条链接、
+    ocr 的图片目标等都在 targets 里）。``disabled`` 用于「全量来源就是这次 run」的
+    退化情形（见 issue_context）：整组都是最新 run 的条目时打标没有信息量，不打。
+    """
+    if not today or today.get("disabled"):
+        return False
+    docs = today.get("docs") or set()
+    if (doc_key and doc_key in docs) or (item_key and item_key in docs):
+        return True
+    tg = today.get("targets") or set()
+    if tg:
+        for p in probs or []:
+            if p.get("target") in tg:
+                return True
+    return False
+
+
 def _build_issue_group(db, mk: str, run: dict | None, raw_items: list, metas: dict,
                        scope: dict, rules: dict,
-                       handled_rules: dict, source: str = "") -> dict:
+                       handled_rules: dict, source: str = "", link: str = "",
+                       today: dict | None = None) -> dict:
     """把一次 run 的条目整理成一个模块分组（含三态计数 + 三条列表）。
 
     条目是否算「我的」走细分范围语义（scope）：未选任何文档范围 = 不限（全部文档）；
     命中大类但不在该大类的细分里 = 领域外（计入 n_out）。
+    ``today``：该模块最新一次成功 run 的条目索引（见 _is_today），命中的行打「🆕 今日」。
     """
     g = {"module": mk, "label": ISSUE_LABELS.get(mk, mk), "icon": ISSUE_ICONS.get(mk, ""),
          "source": source, "run_id": run["id"] if run else None,
+         "detail_link": link,
          "run_at": _fmt_time((run or {}).get("started_at")),
          "columns": item_columns(mk),      # 列 = 该模块页的 item_columns（顺序一致）
          "checked": len(raw_items), "n_total": 0, "n_open": 0, "n_ignored": 0,
-         "n_handled": 0, "n_out": 0, "n_normal": 0,
+         "n_handled": 0, "n_out": 0, "n_normal": 0, "n_today": 0,
          "open": [], "ignored": [], "handled": []}
     for it in raw_items:
         d = it["detail"] or {}
@@ -653,11 +796,16 @@ def _build_issue_group(db, mk: str, run: dict | None, raw_items: list, metas: di
             continue
         summary, extra = _item_summary(mk, d, it["item_type"], probs)
         bucket = st["status"] if st["status"] in ("open", "ignored", "handled") else "open"
+        # 显示用标题：兜底到 doc_key / item_key 时另存 doc_title=""，模板据此改渲染
+        # 「查看文档 ↗」（不再吐 raw doc_key）。
+        title = (meta.get("title") or d.get("doc_title") or d.get("title")
+                 or dk or it["item_key"] or "")
         row = {
-            "id": it["id"], "run_id": g["run_id"], "module": mk,
+            # run_id = **这条 item 真正所属的 run**（全量组会合并多个 run 的条目；
+            # 忽略/已处理表单提交 run_id + item_id，必须成对）
+            "id": it["id"], "run_id": it.get("run_id") or g["run_id"], "module": mk,
             "module_label": g["label"],
-            "title": (meta.get("title") or d.get("doc_title") or d.get("title")
-                      or dk or it["item_key"] or ""),
+            "title": title, "doc_title": "" if title == dk else title,
             "doc_key": dk, "catalog": meta.get("catalog") or d.get("catalog") or "",
             "kit": meta.get("kit") or d.get("kit") or "", "ide": meta.get("ide") or "",
             "lang": meta.get("lang") or d.get("lang") or "", "item_type": it["item_type"],
@@ -665,29 +813,141 @@ def _build_issue_group(db, mk: str, run: dict | None, raw_items: list, metas: di
             "state": bucket,
             "n_probs": st["n_probs"], "n_open": st["n_open"],
             "all_ignored": st["all_ignored"], "all_handled": st["all_handled"],
-            "url": meta.get("url") or d.get("doc_url") or d.get("url") or "",
+            "url": d.get("url") or d.get("doc_url") or meta.get("url") or "",
             "can_act": bool(probs),
             # 该条目上每个问题的「目标」：前端按（模块 + 目标）匹配两段里的同一目标并同步
             "targets": [p["target"] for p in probs],
             # 明细渲染：整列照搬模块页（detail = items.detail_json 原样；links = link_list 列数据）
             "detail": d, "links": _link_rows(mk, d, probs),
             "n_ign": st["n_ignored"], "n_hand": st["n_handled"],
+            # 「🆕 今日」：该条目（doc_key / item_key）或它的问题目标也出现在该模块
+            # **最新一次成功 run** 里 → 今天这次检查也查到了它
+            "today": _is_today(today, dk, it["item_key"], probs),
+            "today_at": (today or {}).get("at") or "",
         }
         g["n_total"] += 1
         g["n_" + bucket] += 1
+        if row["today"]:
+            g["n_today"] += 1
         g[bucket].append(row)
-    for key in ("open", "ignored", "handled"):
-        g[key + "_more"] = max(0, len(g[key]) - ISSUE_MAX_ITEMS)
-        g[key] = g[key][:ISSUE_MAX_ITEMS]
+    # 不在这里截断：三个列表都完整构建（总数 / 页签数字从这里取），
+    # 「按页切片」只对当前页签的分组做（见 _apply_pagination）。
     return g
 
 
 def _totals(groups: list) -> dict:
-    keys = ("n_total", "n_open", "n_ignored", "n_handled", "n_out", "n_normal")
+    keys = ("n_total", "n_open", "n_ignored", "n_handled", "n_out", "n_normal", "n_today")
     return {k: sum(g[k] for g in groups) for k in keys}
 
 
-def _tab_items(groups: list) -> list[dict]:
+# ── 分页：切片 + 分页控件数据（复刻模块页 task_detail 的 .pagination）────────
+def page_args(args) -> dict:
+    """读页码 URL 参数 → {参数名: 页码}（缺省 / 非正整数 / 脏值一律按 1）。
+
+    只认一套参数：fp / fi / fh（仍存在 / 已忽略 / 已处理）。旧参数 dp / di / dh
+    （原「每日增量」段）当别名读一次 —— 只有对应的新参数缺省时才生效 —— 于是旧书签
+    不报错、仍落在同一页；其它未知参数一律忽略（不报错）。
+    ``args`` 是 Flask 的 request.args（任何带 ``get`` 的映射都行），便于脚本 / 测试
+    直接喂字典。越界（大于总页数）由 ``_pager_view`` 按真实总数钳制。
+    """
+    out: dict = {}
+    for name in ISSUE_PAGE_ARGS:
+        raw = None
+        try:
+            raw = args.get(name) if hasattr(args, "get") else None
+            if raw in (None, ""):
+                for alt in ISSUE_PAGE_ALIASES.get(name, ()):
+                    raw = args.get(alt) if hasattr(args, "get") else None
+                    if raw not in (None, ""):
+                        break
+            out[name] = max(1, int(str(raw if raw not in (None, "") else "1")))
+        except (TypeError, ValueError):
+            out[name] = 1
+    return out
+
+
+def _page_numbers(page: int, total_pages: int, span: int = ISSUE_PAGE_SPAN) -> list:
+    """页码条：[1, 2, None, 5, 6, 7, 8, 9, None, 19, 20]（None = 省略号）。
+
+    首尾页恒显，中间围绕当前页开窗（页数少时直接全列）。
+    """
+    if total_pages <= span + 4:
+        return list(range(1, total_pages + 1))
+    mid_start = max(3, page - span // 2)
+    mid_end = min(total_pages - 2, mid_start + span - 1)
+    mid_start = max(3, mid_end - span + 1)
+    out: list = [1, 2]
+    if mid_start > 3:
+        out.append(None)
+    out += list(range(mid_start, mid_end + 1))
+    if mid_end < total_pages - 2:
+        out.append(None)
+    out += [total_pages - 1, total_pages]
+    return out
+
+
+def _me_url(qs: dict, anchor: str = "#me-issues") -> str:
+    """回 /me 的地址：保留非空参数（dt / ft / 各页码），带锚点。"""
+    from urllib.parse import urlencode
+
+    q = {k: v for k, v in (qs or {}).items() if v not in (None, "")}
+    return "/me" + (("?" + urlencode(q)) if q else "") + (anchor or "")
+
+
+def _clamp_page(total: int, page: int) -> int:
+    """页码按真实总数钳制到 [1, 总页数]（越界 = 最后一页；0 / 脏值 = 第 1 页）。"""
+    total_pages = max(1, (int(total or 0) + ISSUE_PAGE_SIZE - 1) // ISSUE_PAGE_SIZE)
+    return max(1, min(int(page or 1), total_pages))
+
+
+def _pager_view(rows: list, page: int, qs: dict, name: str,
+                anchor: str = "#me-issues") -> tuple[list, dict]:
+    """一个列表 → (当页行, 分页控件数据)。
+
+    页码越界（0 / 负数 / 超过总页数）按真实总数钳制到 [1, total_pages]；
+    链接保留 ``qs`` 里的全部参数（dt / ft / 另一段的页码 / 本列表其它页码无关），
+    只把本列表的页码参数换成目标页（本列表参数名 = ``name``）。
+    """
+    rows = list(rows or [])
+    total = len(rows)
+    total_pages = max(1, (total + ISSUE_PAGE_SIZE - 1) // ISSUE_PAGE_SIZE)
+    page = _clamp_page(total, page)
+    start = (page - 1) * ISSUE_PAGE_SIZE
+    keep = {k: v for k, v in (qs or {}).items() if k != name}
+
+    def _link(n: int) -> str:
+        return _me_url({**keep, name: n}, anchor)
+
+    pager = {"name": name, "page": page, "total": total, "total_pages": total_pages,
+             "size": ISSUE_PAGE_SIZE,
+             "prev": _link(page - 1) if page > 1 else "",
+             "next": _link(page + 1) if page < total_pages else "",
+             "items": [{"n": n, "cur": n == page, "href": _link(n)} if n else None
+                       for n in _page_numbers(page, total_pages)]}
+    return rows[start:start + ISSUE_PAGE_SIZE], pager
+
+
+def _apply_pagination(g: dict | None, pages: dict, qs: dict, anchor: str) -> None:
+    """只对**当前页签**的分组按页切片（仍存在 / 已忽略 / 已处理 各自独立分页）。
+
+    顶部数字、页签数字用的是分组里的真实总数（n_total / n_open / n_ignored / n_handled），
+    不受分页影响；这里只把三个列表换成本页切片 + 挂上 ``pager_<列表>`` 控件数据。
+    """
+    if not g:
+        return
+    for bucket, name in ISSUE_PAGE_PARAMS.items():
+        rows, pager = _pager_view(g.get(bucket) or [], (pages or {}).get(name, 1),
+                                  qs, name, anchor)
+        g[bucket] = rows
+        g["pager_" + bucket] = pager
+
+
+def _tab_href(mk: str) -> str:
+    """页签链接：切到该模块（页码一律回到第 1 页，不必把 fp=1 写进 URL）。"""
+    return _me_url({"ft": mk}, "#me-full")
+
+
+def _tab_items(groups: list, hrefs: dict | None = None) -> list[dict]:
     """两段各自的「模块页签」：[{key,label,icon,n_open,n_ignored,n_handled,n_total}]。
 
     页签名 / 顺序 = 该段分组顺序（= 关注模块顺序，未选模块时 = ISSUE_MODULES 顺序），
@@ -696,7 +956,10 @@ def _tab_items(groups: list) -> list[dict]:
     return [{"key": g["module"], "label": g["label"], "icon": g["icon"],
              "n_open": g["n_open"], "n_ignored": g["n_ignored"],
              "n_handled": g["n_handled"], "n_total": g["n_total"],
-             "run_id": g["run_id"]} for g in groups]
+             "run_id": g["run_id"],
+             # 页签链接由 _tab_href 算好（带 dt/ft + 页码参数），模板直接用
+             "href": (hrefs or {}).get(g["module"]) or "/me#me-issues"}
+            for g in groups]
 
 
 def _pick_group(groups: list, key: str) -> dict | None:
@@ -728,26 +991,44 @@ def _json_state(payload: dict):
 
 
 def _back_to_me() -> str:
-    """写操作后回 /me 的地址：保留两段各自的模块页签（表单里带 dt / ft 隐藏字段）。
+    """写操作后回 /me 的地址：保留当前模块页签与页码（表单里带 ft + fp/fi/fh）。
 
-    不带这两个字段时退回「第一个模块的页签」，否则用户在「链接健康」页签点忽略后
-    会被弹回「图片 OCR」页签（看起来像操作没生效）。
+    不带这些字段时退回「第一个模块的页签 / 第 1 页」，否则用户在「链接健康」第 3 页
+    点忽略后会被弹回「图片 OCR」第 1 页（看起来像操作没生效）。
+    旧表单里的 dt / dp / di / dh 仍认（当别名），旧页面缓存提交也不会丢状态。
     """
     qs: list = []
-    for name in ("dt", "ft"):
-        v = (request.form.get(name) or "").strip()
-        if v in ISSUE_MODULES:
-            qs.append(f"{name}={v}")
-    return "/me" + (("?" + "&".join(qs)) if qs else "") + "#me-issues"
+    ft = (request.form.get("ft") or request.form.get("dt") or "").strip()
+    if ft in ISSUE_MODULES:
+        qs.append(f"ft={ft}")
+    for name in ISSUE_PAGE_ARGS:      # 页码：只带 >1 的（第 1 页不必写在 URL 里）
+        raw = request.form.get(name)
+        if raw in (None, ""):
+            for alt in ISSUE_PAGE_ALIASES.get(name, ()):
+                raw = request.form.get(alt)
+                if raw not in (None, ""):
+                    break
+        try:
+            p = int(str(raw or "1"))
+        except ValueError:
+            p = 1
+        if p > 1:
+            qs.append(f"{name}={p}")
+    return "/me" + (("?" + "&".join(qs)) if qs else "") + "#me-full"
 
 
-def issue_context(db, areas: dict, daily_tab: str = "", full_tab: str = "") -> dict:
-    """「📋 我的问题」两段数据（每日增量 / 全量问题）+ 已处理汇总；异常时降级为空。
+def issue_context(db, areas: dict, tab: str = "", pages: dict | None = None) -> dict:
+    """「📋 我的问题」单列表（当前待处理 = 全量，含「🆕 今日」行标记）+ 已处理汇总。
 
-    两段**各自**带一列模块页签（daily_tab / full_tab 是当前选中的模块 key）：
-    返回的 ``daily`` / ``full`` 仍是该段**全部模块**的分组（页签数字从这里取），
-    ``daily_active`` / ``full_active`` 才是当前页签要渲染的那一组（模板只渲染它，
+    单列表带一列模块页签（``tab`` 是当前选中的模块 key）：返回的 ``full`` 是**全部模块**的
+    分组（页签数字从这里取），``full_active`` 才是当前页签要渲染的那一组（模板只渲染它，
     避免一次铺 4 个模块的明细表）。
+
+    「🆕 今日」：取该模块**最新一次成功 run** 的条目索引（doc_key / item_key + 问题目标），
+    单列表里命中的行打标（= 今天这次检查也查到了它）。
+
+    ``pages``：页码参数 fp / fi / fh（见 page_args）——只对当前页签的分组按页切片；
+    缺省全为第 1 页（脚本 / 测试可直接喂字典）。
     """
     scope, mods = _area_selection(areas)
     out = {
@@ -755,8 +1036,9 @@ def issue_context(db, areas: dict, daily_tab: str = "", full_tab: str = "") -> d
                           or (scope or {}).get("langs")),
         "scope": scope,
         "issue_modules": ISSUE_MODULES, "issue_labels": ISSUE_LABELS,
-        "issue_icons": ISSUE_ICONS, "issue_max": ISSUE_MAX_ITEMS, "issue_hint": ISSUE_HINT,
-        "daily": [], "full": [], "daily_totals": {}, "full_totals": {},
+        "issue_icons": ISSUE_ICONS, "issue_page_size": ISSUE_PAGE_SIZE,
+        "issue_hint": ISSUE_HINT,
+        "full": [], "full_totals": {}, "today_total": 0,
         "handled_rows": [], "handled_total": 0, "recheck_run": None,
     }
     try:
@@ -765,15 +1047,30 @@ def issue_context(db, areas: dict, daily_tab: str = "", full_tab: str = "") -> d
     except Exception:  # noqa: BLE001 - 取不到忽略/已处理时按「没有」处理（页面照常出）
         rules, handled_rules = {}, {}
 
-    # ① 每日增量：各模块最新一次成功 run
-    daily_runs: dict = {}
+    # 各模块**最新一次成功 run**（= 「今天这次检查」）→ 单列表的「🆕 今日」标记索引
+    today_runs: dict = {}
     for mk in ISSUE_MODULES:
         if mods and mk not in mods:
             continue
         run = _latest_success_run(db, mk)
-        daily_runs[mk] = (run, _run_items(db, run["id"]) if run else [])
+        today_runs[mk] = (run, _run_items(db, run["id"]) if run else [])
+    today_sets: dict = {}
+    for mk, (run, items) in today_runs.items():
+        docs: set = set()
+        targets: set = set()
+        for it in items:
+            d = it["detail"] or {}
+            docs.add(d.get("doc_key") or it["item_key"] or "")
+            try:
+                for p in ignores.item_problems(mk, d, it["item_type"]):
+                    targets.add(p["target"])
+            except Exception:  # noqa: BLE001 - 单条解析失败不影响整页
+                pass
+        today_sets[mk] = {"docs": docs, "targets": targets,
+                          "run_id": (run or {}).get("id"),
+                          "at": _fmt_time((run or {}).get("started_at"))}
 
-    # ② 全量：recheck 最新一次成功 run（跨 run 去重后仍存在）+ sysmerge 自身最新 run
+    # 单列表（全量）：recheck 最新一次成功 run（跨 run 去重后仍存在）+ sysmerge 自身最新 run
     rc = _latest_success_run(db, "recheck")
     out["recheck_run"] = {"id": rc["id"], "run_at": _fmt_time(rc["started_at"])} if rc else None
     rc_by_mod: dict = {}
@@ -787,37 +1084,71 @@ def issue_context(db, areas: dict, daily_tab: str = "", full_tab: str = "") -> d
         if mods and mk not in mods:
             continue
         if mk in RECHECK_MODULES:
+            # 全量 = 复核 run 的条目 ∪ **复核之后**该模块日常 run 的条目（按 item_key 去重）。
+            # 复核每周才跑一次（周日 22:00），只取复核 run 会让「上次复核之后、今天之前」
+            # 的日常新增问题整段消失（用户实测的 bug）。
+            # 日常 run 的条目只并入**真正的问题项**（_daily_problem_item = 模块页/复核页口径）；
+            # no_cn / clean / 只有被拒·服务端异常·不可达的文档 / 中文图含中文都不并入。
+            rc_items = _merge_recheck_items(db, rc_by_mod.get(mk, []) if rc else [],
+                                            mk, rc["started_at"]) if rc else []
             src = (f"🗓️ 当前全量问题 #{rc['id']}（跨 run 去重后仍存在）" if rc else "")
-            full_runs[mk] = (rc, rc_by_mod.get(mk, []) if rc else [], src)
+            full_runs[mk] = (rc, rc_items, src)
         else:
             run = _latest_success_run(db, mk)
             full_runs[mk] = (run, _run_items(db, run["id"]) if run else [],
                              f"🧩 {ISSUE_LABELS[mk]} #{run['id']}（整站全量扫描）" if run else "")
 
-    # 文档元信息一次批量取（两个区共用）
+    # 文档元信息一次批量取（单列表共用）
     keys: list = []
-    for run, items in daily_runs.values():
-        keys += [(it["detail"] or {}).get("doc_key") or it["item_key"] for it in items]
     for run, items, _s in full_runs.values():
         keys += [(it["detail"] or {}).get("doc_key") or it["item_key"] for it in items]
     metas = _docs_meta(db, keys)
 
-    out["daily"] = [_build_issue_group(db, mk, run, items, metas, scope,
-                                       rules, handled_rules)
-                    for mk, (run, items) in daily_runs.items()]
-    out["full"] = [_build_issue_group(db, mk, run, items, metas, scope,
-                                      rules, handled_rules, source=src)
-                   for mk, (run, items, src) in full_runs.items()]
-    out["daily_totals"] = _totals(out["daily"])
-    out["full_totals"] = _totals(out["full"])
+    def _full_link(mk, run):
+        if not run:
+            return ""
+        return (f"/recheck/run/{run['id']}?tab={mk}" if mk in RECHECK_MODULES
+                else f"/{mk}/run/{run['id']}")
 
-    # 两段各自的模块页签 + 当前选中的分组（daily_tab / full_tab 来自 ?dt= / ?ft=）
-    out["daily_tabs"] = _tab_items(out["daily"])
-    out["full_tabs"] = _tab_items(out["full"])
-    out["daily_active"] = _pick_group(out["daily"], (daily_tab or "").strip())
-    out["full_active"] = _pick_group(out["full"], (full_tab or "").strip())
-    out["daily_tab"] = out["daily_active"]["module"] if out["daily_active"] else ""
+    def _today_of(mk: str, run) -> dict | None:
+        """该模块的「今日」索引；**全量来源就是这个 run**（sysmerge）时整组都是这次
+        检查的条目，打标没有信息量 → 返回 disabled（不打标）。"""
+        t = today_sets.get(mk)
+        if not t:
+            return None
+        if run and t.get("run_id") == run["id"]:
+            return {"disabled": True}
+        return t
+
+    out["full"] = [_build_issue_group(db, mk, run, items, metas, scope, rules, handled_rules,
+                                      source=src, link=_full_link(mk, run),
+                                      today=_today_of(mk, run))
+                   for mk, (run, items, src) in full_runs.items()]
+    out["full_totals"] = _totals(out["full"])
+    out["today_total"] = out["full_totals"].get("n_today", 0)
+
+    # 模块页签 + 当前选中的分组（tab 来自 ?ft=；旧 ?dt= 由路由折算）
+    out["full_active"] = _pick_group(out["full"], (tab or "").strip())
     out["full_tab"] = out["full_active"]["module"] if out["full_active"] else ""
+
+    # 分页（用户 2026-09 要求）：单列表只需**一套**页码参数 fp / fi / fh。
+    #   只对**当前页签**的分组按页切片（用户一次只看一个模块）；顶部数字、页签数字
+    #   仍是该模块的真实总数（n_total / n_open / n_ignored / n_handled，不受分页影响）。
+    pages = {k: (pages or {}).get(k, 1) for k in ISSUE_PAGE_ARGS}
+    # 先按真实总数把页码钳制到有效范围（越界 → 最后一页），再用钳制后的页码算所有链接
+    # （页签链接 / 分页链接 / 表单隐藏字段都只带有效页码，URL 不会残留 fp=9 这种脏值）。
+    act_g = out["full_active"]
+    for bucket, name in ISSUE_PAGE_PARAMS.items():
+        pages[name] = _clamp_page(len((act_g or {}).get(bucket) or []), pages[name])
+    out.update(pages)                     # 模板里表单的隐藏字段（回跳时保留页码）
+    out["issue_pages"] = pages
+    out["issue_page_args"] = ISSUE_PAGE_ARGS
+    out["issue_page_size"] = ISSUE_PAGE_SIZE
+    qs = {"ft": out["full_tab"], **pages}
+    _apply_pagination(out["full_active"], pages, qs, "#me-full")
+    # 页签链接：切模块时页码回到第 1 页（第 1 页不写进 URL）
+    out["full_tabs"] = _tab_items(
+        out["full"], {g["module"]: _tab_href(g["module"]) for g in out["full"]})
 
     # 已处理：单列计数（全局生效的 handled 记录，含 sysmerge 等所有模块）
     try:
@@ -922,7 +1253,7 @@ def areas_page_context(db, user: dict) -> dict:
 
 
 def _empty_context() -> dict:
-    return {"areas": {d: [] for d in ALL_AREA_DIMS},
+    ctx = {"areas": {d: [] for d in ALL_AREA_DIMS},
             "areas_eff": {d: [] for d in NEW_DIMS},
             "area_options": {}, "labels": {}, "areas_view": {"modules": [], "types": [], "langs": []},
             "area_total": 0, "has_legacy": False,
@@ -938,19 +1269,23 @@ def _empty_context() -> dict:
             # 「📋 我的问题」（P2b）：未登录/无用户时给空壳，模板照常渲染
             "has_areas": False, "issue_modules": ISSUE_MODULES,
             "issue_labels": ISSUE_LABELS, "issue_icons": ISSUE_ICONS,
-            "issue_max": ISSUE_MAX_ITEMS, "issue_hint": ISSUE_HINT,
-            "daily": [], "full": [], "daily_totals": {}, "full_totals": {},
-            "daily_tabs": [], "full_tabs": [],
-            "daily_active": None, "full_active": None,
-            "daily_tab": "", "full_tab": "",
+            "issue_page_size": ISSUE_PAGE_SIZE, "issue_hint": ISSUE_HINT,
+            "full": [], "full_totals": {}, "today_total": 0,
+            "full_tabs": [], "full_active": None, "full_tab": "",
             "handled_rows": [], "handled_total": 0, "recheck_run": None}
+    # 分页参数（模板里表单隐藏字段 / 分页控件用；未登录时全为第 1 页）
+    ctx.update({k: 1 for k in ISSUE_PAGE_ARGS})
+    ctx["issue_pages"] = {k: 1 for k in ISSUE_PAGE_ARGS}
+    ctx["issue_page_args"] = ISSUE_PAGE_ARGS
+    return ctx
 
 
-def me_context(db, user: dict, daily_tab: str = "", full_tab: str = "") -> dict:
+def me_context(db, user: dict, tab: str = "", pages: dict | None = None) -> dict:
     """/me 页面渲染关注领域（只读回显）+ 已关注领域文档范围预览 + 我的问题所需上下文；
     预览/问题取数异常不该让页面挂掉。
 
-    daily_tab / full_tab：问题列表两段各自的模块页签（来自 ?dt= / ?ft=）。
+    tab：问题列表的模块页签（来自 ?ft=，旧 ?dt= 等价）。
+    pages：列表三个分区的页码（来自 ?fp/?fi/?fh，旧 ?dp/?di/?dh 当别名，见 page_args）。
     """
     ctx = _empty_context()
     if not user or not user.get("id"):
@@ -970,21 +1305,21 @@ def me_context(db, user: dict, daily_tab: str = "", full_tab: str = "") -> dict:
     except Exception:  # noqa: BLE001 - 预览算不出来时页面降级（不影响其它区）
         ctx["preview"] = None
     try:
-        ctx.update(issue_context(db, ctx["areas"], daily_tab, full_tab))
+        ctx.update(issue_context(db, ctx["areas"], tab, pages))
     except Exception:  # noqa: BLE001 - 问题列表算不出来时页面降级（关注领域区照常）
         pass
     return ctx
 
 
-def build_me_context(db_path: str, user: dict, daily_tab: str = "",
-                     full_tab: str = "") -> dict:
+def build_me_context(db_path: str, user: dict, tab: str = "",
+                     pages: dict | None = None) -> dict:
     """同 me_context，但自行开关连接（脚本/测试用）。"""
     ctx = _empty_context()
     if not user or not user.get("id"):
         return ctx
     db = IndexDB(db_path)
     try:
-        return me_context(db, user, daily_tab, full_tab)
+        return me_context(db, user, tab, pages)
     finally:
         db.close()
 
@@ -1173,7 +1508,10 @@ def register_me(app, db_path: str = DB_PATH):
                     "status": "ignored" if (ok and ign_after) else "open"})
             return redirect(_back_to_me())
 
-        if act not in ("ignore", "unignore", "handle", "unhandle") or not run_id or not item_id:
+        # act：整条（ignore / unignore / handle / unhandle）+ 与模块页对齐的
+        # 「全部忽略 / 恢复全部」（all）与「逐条链接忽略」（toggle:<问题序号>）
+        if (act not in ("ignore", "unignore", "handle", "unhandle", "all")
+                and not act.startswith("toggle:")) or not run_id or not item_id:
             return _fail("⚠️ 操作参数不完整，已忽略本次操作。")
 
         db = IndexDB(db_path)
@@ -1194,6 +1532,10 @@ def register_me(app, db_path: str = DB_PATH):
             probs = ignores.item_problems(mk, detail, row[0])
             if not probs:
                 return _fail("⚠️ 该条目没有可操作的问题项。")
+            # 写之前的忽略态（供 JSON 里算「哪些目标的状态真的变了」，前端据此同步两段）
+            rules0 = ignores.active_map(db)
+            flags0 = [ignores.is_ignored(rules0, mk, p["target"], p["kind"],
+                                         p.get("doc_key", "")) for p in probs]
 
             ip = _client_ip()
             n = 0
@@ -1218,12 +1560,46 @@ def register_me(app, db_path: str = DB_PATH):
                         n += 1
                 msg = (f"✅ 已标记「已处理」{n} 个问题（全局生效，不再计入「仍存在」）。" if n
                        else "ℹ️ 这些问题的「已处理」已经生效过了。")
-            else:  # unhandle
+            elif act == "unhandle":
                 for p in probs:
                     n += db.restore_handled_for(mk, p["target"], p["kind"],
                                                 p.get("doc_key", ""), restored_by=who)
                 msg = (f"↩️ 已撤销「已处理」{n} 个问题（重新计入「仍存在」）。" if n
                        else "ℹ️ 没有可撤销的「已处理」。")
+            elif act == "all":
+                # 「全部忽略 / 恢复全部」：与模块页 POST /<key>/ignore 的 act=all 同语义 ——
+                # 还有没忽略的 → 全忽略；否则 → 全恢复（服务端重算问题列表，不信任前端序号）。
+                want = not all(flags0)
+                selected = ({ignores.encode_problem(p) for p in probs} if want else set())
+                added, restored = ignores.apply_selection(db, mk, probs, selected,
+                                                          reason="我的问题页", ip=ip)
+                n = added + restored
+                msg = (f"✅ 已全部忽略 {added} 个问题（全局生效，可点「↩️ 恢复全部」还原）。"
+                       if want and added
+                       else (f"↩️ 已恢复全部 {restored} 个忽略（重新计入「仍存在」）。"
+                             if restored else "ℹ️ 状态没有变化（可能已被别处改过）。"))
+            else:  # toggle:<问题序号>：逐条链接（或逐条问题）忽略 ↔ 恢复
+                try:
+                    idx = int(act.split(":", 1)[1] or "-1")
+                except ValueError:
+                    return _fail("⚠️ 问题序号不合法，已忽略本次操作。")
+                if not 0 <= idx < len(probs):
+                    return _fail("⚠️ 问题序号越界（页面可能已过期），请刷新后重试。")
+                want_flags = list(flags0)
+                want_flags[idx] = not flags0[idx]     # 只翻转第 idx 条，其余保持
+                selected = {ignores.encode_problem(p)
+                            for j, p in enumerate(probs) if want_flags[j]}
+                added, restored = ignores.apply_selection(db, mk, probs, selected,
+                                                          reason="我的问题页", ip=ip)
+                n = added + restored
+                if not n:
+                    msg = "ℹ️ 状态没有变化（可能已被别处改过）。"
+                elif added:
+                    msg = (f"🚫 已忽略这条{ignores.TARGET_LABEL.get(mk, '问题')}"
+                           f"（全局生效，再点一次即可恢复）。")
+                else:
+                    msg = (f"↩️ 已恢复这条{ignores.TARGET_LABEL.get(mk, '问题')}的忽略"
+                           f"（重新计入「仍存在」）。")
             flash(msg, "ok" if n else "info")
 
             if _is_fetch():
@@ -1234,7 +1610,8 @@ def register_me(app, db_path: str = DB_PATH):
                         "targets": [p["target"] for p in probs],
                         "status": "open", "n_probs": len(probs), "n_open": 0,
                         "n_ignored": 0, "n_handled": 0,
-                        "all_ignored": False, "all_handled": False}
+                        "all_ignored": False, "all_handled": False,
+                        "problems": [], "changed": []}
                 try:
                     probs2, st2 = _problem_state(mk, detail, row[0],
                                                  ignores.active_map(db),
@@ -1246,13 +1623,22 @@ def register_me(app, db_path: str = DB_PATH):
                         "n_open": st2["n_open"], "n_ignored": st2["n_ignored"],
                         "n_handled": st2["n_handled"],
                         "all_ignored": st2["all_ignored"],
-                        "all_handled": st2["all_handled"]})
+                        "all_handled": st2["all_handled"],
+                        # 逐条状态（idx 与模板 .ign-mini 的 data-idx 同口径）+ 本次真变了的目标
+                        "problems": [{"idx": i, "ignored": bool(p.get("ignored")),
+                                      "handled": bool(p.get("handled"))}
+                                     for i, p in enumerate(probs2)],
+                        "changed": [p["target"] for i, p in enumerate(probs2)
+                                    if bool(p.get("ignored"))
+                                    != (flags0[i] if i < len(flags0) else False)]})
                 except Exception:  # noqa: BLE001 - 回读失败不影响写操作本身
                     pass
                 return _json_state(resp)
         finally:
             db.close()
-        return redirect("/me#me-issues")
+        # 无 JS 的整页回跳：保留两段页签与页码（dt/ft + dp/fp/di/fi/dh/fh），
+        # 否则用户在第 3 页点忽略会被弹回第 1 页 / 第一个模块（看起来像操作没生效）。
+        return redirect(_back_to_me())
 
     app.register_blueprint(me_bp)
     return me_bp

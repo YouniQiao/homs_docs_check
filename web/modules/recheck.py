@@ -42,7 +42,7 @@ TABS = [_tab(mk) for mk in MODULES]
 def _recheck_context(db) -> dict:
     """最近一次复核 run 的概览 + 按模块的解决率（供页面比例条，卡片可直链到对应页签）。"""
     row = db._conn.execute(
-        "SELECT id, summary_json FROM runs WHERE module_key='recheck' "
+        "SELECT id, summary_json, started_at FROM runs WHERE module_key='recheck' "
         "AND status='success' ORDER BY id DESC LIMIT 1").fetchone()
     stats = {"total": 0, "resolved": 0, "still": 0, "gone": 0, "ignored": 0, "rate": 0.0}
     per_module: list[dict] = []
@@ -50,7 +50,7 @@ def _recheck_context(db) -> dict:
     if not row:
         return {"recheck_stats": stats, "recheck_modules": per_module,
                 "recheck_run_id": None}
-    run_id, sj = row
+    run_id, sj, run_started_at = row
     latest_run_id = run_id
     try:
         s = json.loads(sj or "{}")
@@ -59,6 +59,7 @@ def _recheck_context(db) -> dict:
                  "ignored": s.get("ignored", 0), "rate": s.get("rate", 0.0)}
     except Exception:
         pass
+    stats["run_at"] = run_started_at
 
     agg: dict[str, dict] = {}
     for dj in db._conn.execute("SELECT detail_json FROM items WHERE run_id=?", (run_id,)):
