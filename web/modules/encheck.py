@@ -92,6 +92,7 @@ ENCHECK_MODULE = {
                      ("cn_links", "中文链接", "link_list"),
                      ("url", "源文档")],
     "filters": [
+        {"key": "kit", "label": "Kit", "source": "kit", "default": "all", "options": []},
         {"key": "type", "label": "问题", "source": "count",
          "fields": {"hanzi": "hanzi_count", "punct": "punct_count",
                     "url_cn": "url_cn_char_count", "cn_link": "cn_link_count"},

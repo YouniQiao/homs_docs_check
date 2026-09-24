@@ -90,6 +90,7 @@ LINKCHECK_MODULE = {
         ("url", "源文档"),
     ],
     "filters": [
+        {"key": "kit", "label": "Kit", "source": "kit", "default": "all", "options": []},
         {"key": "lang", "label": "语言", "source": "detail",
          "options": [("all", "全部"), ("cn", "中文文档"), ("en", "英文文档")]},
         {"key": "type", "label": "问题", "source": "count",

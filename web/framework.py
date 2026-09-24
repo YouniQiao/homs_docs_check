@@ -159,6 +159,89 @@ DEFAULT_BADGE_MAP = {
 }
 
 
+def _kit_options(db, items=None, show_all: bool = False) -> list:
+    """Kit 下拉选项。
+
+    传入当前 run 的 ``items`` 时按**条目实际涉及的 Kit**统计计数：
+      · 只列有数据的 Kit，标签带计数（``ArkUI（45）``），按计数倒序；
+      · 末尾附「显示全部 N 个 Kit…」哨兵项（value=``__showall__``）；
+      · ``show_all=True``（用户点了「显示全部」）时列全量（有数据的仍带计数）。
+    不传 items（页面无 run）时退回全量无计数列表。
+    """
+    all_kits = [r[0] for r in db._conn.execute(
+        "SELECT DISTINCT kit FROM docs WHERE kit IS NOT NULL AND kit != '' ORDER BY kit")]
+    if not items:
+        return [("all", "全部")] + [(k, k) for k in all_kits] + [("__none__", "未分类")]
+    # 按**条目**统计（与筛选/列表口径一致；kit 已由 _annotate_kit 注入 detail）
+    cnt: dict = {}
+    for it in items:
+        k = (it.get("detail") or {}).get("kit") or ""
+        if k:
+            cnt[k] = cnt.get(k, 0) + 1
+    labeled = sorted(cnt.items(), key=lambda x: (-x[1], x[0]))
+    none_n = sum(1 for it in items if not (it.get("detail") or {}).get("kit"))
+    opts = [("all", f"全部（{len(items)}）")]
+    if show_all:
+        opts += [(k, f"{k}（{cnt[k]}）" if cnt.get(k) else k) for k in all_kits]
+    else:
+        opts += [(k, f"{k}（{n}）") for k, n in labeled]
+        opts.append(("__showall__", f"显示全部 {len(all_kits)} 个 Kit…"))
+    opts.append(("__none__", f"未分类（{none_n}）" if none_n else "未分类"))
+    return opts
+
+
+def _fill_kit_options(filters, db_path, items) -> None:
+    """把当前 run 的 Kit 选项（带计数、只列有数据的）填进 filters 里的 kit 项。
+
+    自己开关连接（调用点在页面主体里，此时页面的 db 已关）。
+    """
+    if not any(f.get("source") == "kit" for f in (filters or [])):
+        return
+    show_all = False
+    try:
+        from flask import request
+        # 用户选了「显示全部 N 个 Kit」（或显式 kitall=1）→ 展开全量
+        show_all = (request.args.get("kit") == "__showall__") or (request.args.get("kitall") == "1")
+    except Exception:  # noqa: BLE001
+        pass
+    # 计数应基于「其它筛选也生效后」的条目——否则标签会比实际筛出多
+    # （如 OCR 页默认带 lang=en，选某个 Kit 时是 Kit + 英文 的交集）。
+    others = [f for f in (filters or []) if f.get("source") != "kit"]
+    base = items
+    if others:
+        try:
+            from flask import request
+            base, _ = _apply_filters(items, {"filters": others}, request.args)
+        except Exception:  # noqa: BLE001 - 算不出就退回按全部条目计数
+            base = items
+    db = IndexDB(db_path)
+    try:
+        opts = _kit_options(db, base, show_all=show_all)
+        for f in (filters or []):
+            if f.get("source") == "kit":
+                f["options"] = opts
+    finally:
+        db.close()
+
+
+def _annotate_kit(items: list[dict], db) -> None:
+    """给每条 item 的 detail 注入 ``kit``（按 doc_key 关联 docs）——供 Kit 过滤/展示。
+
+    kit 不在 run 的 items.detail 里（在 docs 表），过滤时才查；一次批量 IN 避免 N 次查询。
+    """
+    keys = sorted({(it["detail"].get("doc_key") or it["item_key"] or "") for it in items
+                   if (it["detail"].get("doc_key") or it["item_key"])})
+    m: dict = {}
+    for i in range(0, len(keys), 400):
+        ch = keys[i:i + 400]
+        sql = "SELECT doc_key, kit FROM docs WHERE doc_key IN (%s)" % ",".join("?" * len(ch))
+        for dk, kit in db._conn.execute(sql, ch):
+            m[dk] = kit or ""
+    for it in items:
+        dk = it["detail"].get("doc_key") or it["item_key"] or ""
+        it["detail"]["kit"] = m.get(dk, "")
+
+
 def _apply_filters(items: list[dict], module: dict, args) -> tuple[list[dict], dict]:
     """按模块定义的 filters 筛选 + 排序。返回 (过滤后的 items, 当前筛选状态)。"""
     state: dict = {}
@@ -189,6 +272,14 @@ def _apply_filters(items: list[dict], module: dict, args) -> tuple[list[dict], d
             elif val in fields:
                 fd = fields[val]
                 items = [it for it in items if it["detail"].get(fd, 0) > 0]
+        elif f["source"] == "kit":
+            # detail["kit"]（由 _annotate_kit 注入）；"__none__" = 没有 Kit 的文档
+            if val == "__showall__":
+                pass          # 「显示全部 N 个 Kit」= 只展开下拉，不筛选
+            elif val == "__none__":
+                items = [it for it in items if not it["detail"].get("kit")]
+            else:
+                items = [it for it in items if it["detail"].get("kit") == val]
         elif f["source"] == "contains":
             # 自由文本子串匹配（如按源文档地址里的任意字段过滤）；留空=全选
             field = f.get("field", f["key"])
@@ -266,7 +357,7 @@ def register_module(app, db_path: str, module: dict):
     app.jinja_env.filters.setdefault("fmt_time", _fmt_time)
     app.jinja_env.filters.setdefault("fmt_value", _fmt_value)
 
-    def _resolve_view(args) -> tuple:
+    def _resolve_view(args, db=None) -> tuple:
         """解析当前视图配置。模块若定义 tabs（分组页签），则返回当前页签的
         列/徽标/筛选；否则用模块自身的。返回
         (item_columns, badge_map, multi_badge, filters, tabs, active_tab, tab_field)。
@@ -308,8 +399,8 @@ def register_module(app, db_path: str, module: dict):
     @bp.route("/run/<int:run_id>")
     def task_detail(run_id):
         from flask import abort
-        cols, bm, multi_badge, filters, tabs, active_tab, tab_field = _resolve_view(request.args)
         db = IndexDB(db_path)
+        cols, bm, multi_badge, filters, tabs, active_tab, tab_field = _resolve_view(request.args, db)
         try:
             run = db.get_run(run_id)
             # run_id 是全局主键，校验是否属于当前模块
@@ -318,6 +409,7 @@ def register_module(app, db_path: str, module: dict):
             if run and module.get("runs_provider"):
                 run = module["runs_provider"](db, [run])[0]
             items = db.get_items(run_id) if run else []
+            _annotate_kit(items, db)   # 注入 kit（供 Kit 过滤；新 schema 无 harm）
             mk = active_tab["key"] if (tabs and active_tab) else key
             # 页签视图：顶部汇总改用「当前页签（模块）」的数据（run 摘要里带 {模块}_ 前缀时），
             # 与「按模块解决情况」卡片口径一致（解决率分母剔除已忽略）。
@@ -363,6 +455,7 @@ def register_module(app, db_path: str, module: dict):
         filter_state = {}
         if module.get("item_visible") and not tabs and show_mode == "default":
             items = [it for it in items if module["item_visible"](it)]
+        _fill_kit_options(filters, db_path, items)   # Kit 下拉：按实际显示的条目计数
         if filters:
             items, filter_state = _apply_filters(items, {"filters": filters}, request.args)
         # 分页：每页 per_page（模块可配置，默认 100），在筛选后内存切片
@@ -411,6 +504,7 @@ def register_module(app, db_path: str, module: dict):
             if not run or run["module_key"] != key:
                 abort(404)
             items = db.get_items(run_id)
+            _annotate_kit(items, db)
             ig_rules = ignores.active_map(db) if has_ign else {}
             col_defs = cols
         finally:
@@ -422,6 +516,7 @@ def register_module(app, db_path: str, module: dict):
             items = _filter_by_show(items, show_mode)
         if module.get("item_visible") and not tabs and show_mode == "default":
             items = [it for it in items if module["item_visible"](it)]
+        _fill_kit_options(filters, db_path, items)
         if filters:
             items, _ = _apply_filters(items, {"filters": filters}, request.args)
         buf = io.StringIO()

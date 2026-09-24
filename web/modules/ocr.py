@@ -93,6 +93,7 @@ OCR_MODULE = {
     "item_columns": [("image", "图片"), ("lang", "语言"), ("ocr_text", "识别文字"),
                      ("confidence", "置信度"), ("doc_url", "来源文档")],
     "filters": [
+        {"key": "kit", "label": "Kit", "source": "kit", "default": "all", "options": []},
         {"key": "lang", "label": "语言", "source": "detail", "default": "en",
          "options": [("all", "全部"), ("cn", "中文文档"), ("en", "英文文档")]},
         {"key": "type", "label": "检出", "source": "item_type", "default": "has_cn",
