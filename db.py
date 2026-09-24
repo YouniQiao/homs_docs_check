@@ -676,6 +676,22 @@ class IndexDB:
         self.commit()
         return bool(cur is not None and cur.rowcount)
 
+    def restore_handled_for(self, module_key: str, target: str, kind: str,
+                            doc_key: str = "", restored_by: str = "") -> int:
+        """撤销某 (模块,目标,类型) 下所有生效中的「已处理」（全局 + 该文档范围）。
+
+        与 restore_ignores_for 同款：不物理删除，只标记 restored_at；返回改动条数。
+        「我的问题」页（P2b）的「撤销已处理」按钮用。
+        """
+        cur = self._exec_retry(
+            "UPDATE handled SET restored_at=?, restored_by=?"
+            " WHERE module_key=? AND target=? AND kind=? AND restored_at IS NULL"
+            " AND (doc_key='' OR doc_key=?)",
+            (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), restored_by or "",
+             module_key, target, kind, doc_key or ""))
+        self.commit()
+        return int(cur.rowcount) if cur is not None else 0
+
     def list_handled(self, module_key: str = None, active_only: bool = True) -> list[dict]:
         """已处理记录（默认只看生效中的）；按 id 倒序。"""
         sql = ("SELECT id, module_key, target, doc_key, kind, note, created_at,"

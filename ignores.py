@@ -132,6 +132,16 @@ def is_ignored(rules: dict, module_key: str, target: str, kind: str,
     return False
 
 
+def is_handled(rules: dict, module_key: str, target: str, kind: str,
+               doc_key: str = "") -> bool:
+    """「已处理」判定：记录结构与 ignores 完全一致（target/doc_key/kind），故复用同一匹配。
+
+    rules = db.active_handled_map() 的返回值 {module: [{target,doc_key,kind}]}。
+    doc_key 非空 = 仅该文档范围；调用方不给 doc_key 时按保守口径（不匹配）。
+    """
+    return is_ignored(rules, module_key, target, kind, doc_key)
+
+
 def item_problems(module_key: str, detail: dict, item_type: str = "") -> list[dict]:
     """列举一条 item 上的每个问题：{kind, kind_label, target, doc_key, label}。
 

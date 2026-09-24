@@ -36,6 +36,9 @@ def create_app() -> Flask:
     # （登录功能此时会自动禁用，这里只是保证 session 不会因缺 key 抛 500）。
     _auth_env = load_auth_env()
     app.secret_key = _auth_env.get("FLASK_SECRET_KEY") or os.urandom(32)
+    # 模板改动免重启即生效（debug=False 时 Jinja 会缓存模板，改了不生效）
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
+    app.jinja_env.auto_reload = True
 
     @app.context_processor
     def inject_nav():
