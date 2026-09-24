@@ -49,6 +49,26 @@
     .me-chip b { color: var(--primary); }
     .me-pv { font-size: 12.5px; color: var(--muted); line-height: 1.85; }
     .me-pv b { color: var(--primary); font-size: 13px; }
+    /* 三维（模块 / 文档 / 语言）分组成胶囊：一眼看出「关注了什么」 */
+    .me-scope { margin-top: 12px; display: grid; gap: 7px; }
+    .me-scope-row { display: flex; align-items: flex-start; gap: 10px; }
+    .me-scope-key { flex: 0 0 80px; font-size: 12.5px; font-weight: 600; color: var(--muted);
+                    padding-top: 3px; white-space: nowrap; }
+    .me-scope-vals { display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+                     min-width: 0; }
+    .me-scope-grp { display: inline-flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+    .me-scope-grp + .me-scope-grp { border-left: 1px solid var(--border); padding-left: 9px;
+                                    margin-left: 3px; }
+    .me-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px;
+               color: #39405a; background: #fbfcff; border: 1px solid var(--border);
+               border-radius: 999px; padding: 3px 11px; line-height: 1.55;
+               white-space: nowrap; }
+    .me-pill.cat { background: #f3f7ff; border-color: #d5e0f8; color: var(--primary);
+                   font-weight: 600; }
+    .me-pill.sub { background: #f1f3f8; border-color: #e4e8f1; color: #5a6172;
+                   font-size: 12px; padding: 2px 10px; }
+    .me-pill.all { background: #f6f7fa; border-style: dashed; color: #6b7183; }
+    .me-pill .n { font-size: 11px; color: var(--muted); font-weight: 500; }
     /* ── c. 两张问题卡片：各自的页签 / 数据卡 / 明细 ── */
     .mi-stats { margin: 12px 0 14px; }
     .mi-stats .stat-card { padding: 12px 20px; }
@@ -57,6 +77,14 @@
     .mi-rows { margin-top: 0; }
     .mi-rows td { vertical-align: top; }
     .mi-rows tr.ignored, .mi-rows tr.handled { opacity: .62; }
+    /* 两段联动：被同步的行闪一下，让用户看到「另一段也变了」 */
+    .mi-row.sync-pulse td { animation: syncPulse 1.2s ease-out; }
+    @keyframes syncPulse { from { background: #fff6da; } to { background: transparent; } }
+    .me-toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+                z-index: 200; background: rgba(23,32,52,.94); color: #fff; font-size: 13px;
+                padding: 10px 18px; border-radius: 999px; box-shadow: 0 10px 26px rgba(0,0,0,.28);
+                opacity: 0; transition: opacity .18s; pointer-events: none; max-width: 86vw; }
+    .me-toast.show { opacity: 1; }
     .mi-type { width: 168px; }
     .mi-type .badge { margin-bottom: 4px; }
     .mi-title { font-size: 13px; font-weight: 600; line-height: 1.55; word-break: break-word; }
@@ -156,12 +184,55 @@
             {% else %}
             <span class="me-badge">未设置 = 全部</span>
             {% endif %}
-            <span class="me-bar-s">
-                模块：{% if scope.modules %}{% for mk in scope.modules %}{{ issue_labels.get(mk, module_labels.get(mk, mk)) }}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}全部{% endif %}
-                ｜ 文档：{% if scope_summary %}{% for g in scope_summary %}{{ g.label }}{% if g.narrowed %} → {{ g.detail }}{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}全部{% endif %}
-                ｜ 语言：{% if lang_summary %}{% for l in lang_summary %}{{ l.label }}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}全部{% endif %}
-            </span>
             <a class="me-btn me-btn-primary" href="/me/areas">⚙️ 设置关注领域 →</a>
+        </div>
+
+        {# 三个维度各自成组、取值各是小胶囊：一眼看出「关注了什么」
+           （不选任何一项 = 该维度全部，用虚线胶囊标出）
+           文档维度：大类胶囊 + 该大类下的细分子胶囊（未细分 = 「该大类全部」）。 #}
+        {% set catcnt = {} %}
+        {% if preview %}{% for pg in preview.groups %}{% set _ = catcnt.update({pg.catalog: pg.count_fmt}) %}{% endfor %}{% endif %}
+        <div class="me-scope">
+            <div class="me-scope-row">
+                <span class="me-scope-key">🧩 模块</span>
+                <span class="me-scope-vals">
+                    {% if scope.modules %}
+                    {% for mk in issue_modules %}{% if mk in scope.modules %}
+                    <span class="me-pill">{{ issue_icons.get(mk, '') }} {{ issue_labels.get(mk, module_labels.get(mk, mk)) }}</span>
+                    {% endif %}{% endfor %}
+                    {% else %}
+                    <span class="me-pill all">全部 {{ issue_modules | length }} 个模块</span>
+                    {% endif %}
+                </span>
+            </div>
+            <div class="me-scope-row">
+                <span class="me-scope-key">📄 文档</span>
+                <span class="me-scope-vals">
+                    {% if scope_summary %}
+                    {% for g in scope_summary %}
+                    <span class="me-scope-grp">
+                        <span class="me-pill cat">{{ g.label }}
+                            {%- if catcnt.get(g.catalog) %}<span class="n">{{ catcnt.get(g.catalog) }} 篇</span>{% endif %}</span>
+                        {% if g.narrowed %}
+                        {% for v in g.detail_items %}<span class="me-pill sub">{{ v }}</span>{% endfor %}
+                        {% else %}<span class="me-pill sub">该大类全部</span>{% endif %}
+                    </span>
+                    {% endfor %}
+                    {% else %}
+                    <span class="me-pill all">全部文档</span>
+                    {% endif %}
+                </span>
+            </div>
+            <div class="me-scope-row">
+                <span class="me-scope-key">🌐 语言</span>
+                <span class="me-scope-vals">
+                    {% if lang_summary %}
+                    {% for l in lang_summary %}<span class="me-pill">{{ l.label }}</span>{% endfor %}
+                    {% else %}
+                    <span class="me-pill all">全部语言</span>
+                    {% endif %}
+                </span>
+            </div>
         </div>
 
         {% if preview %}
@@ -170,7 +241,7 @@
             {%- if preview.all_docs %}（未设文档范围 = 全部）{% endif %}
         </p>
         {% else %}
-        <p class="me-pv" style="margin-top:8px;">📐 口径预览暂不可用（统计出错），不影响下面的问题列表。</p>
+        <p class="me-pv" style="margin-top:8px;">📐 文档范围统计暂不可用（统计出错），不影响下面的问题列表。</p>
         {% endif %}
 
         {% with msgs = get_flashed_messages(with_categories=true) %}
@@ -184,9 +255,10 @@
     <div class="tabs">
         {% for t in tabs %}
         <a class="tab {{ 'active' if t.key == active_key else '' }}"
+           data-seg="{{ seg }}" data-mod="{{ t.key }}"
            href="/me?dt={{ t.key if seg == 'daily' else dt_key }}&amp;ft={{ t.key if seg == 'full' else ft_key }}#me-{{ seg }}"
            title="切到「{{ t.label }}」">
-            {{ t.icon }} {{ t.label }}<span class="tab-n">{{ "{:,}".format(t.n_open) }}</span>
+            {{ t.icon }} {{ t.label }}<span class="tab-n" data-cnt="n_open">{{ "{:,}".format(t.n_open) }}</span>
         </a>
         {% endfor %}
     </div>
@@ -196,15 +268,15 @@
     {% macro me_stats(g) %}
     <div class="stats mi-stats">
         <div class="stat-card">
-            <div class="num" style="color:{{ 'var(--deleted)' if g.n_open else 'var(--added)' }}">{{ "{:,}".format(g.n_open) }}</div>
+            <div class="num" data-cnt="n_open" style="color:{{ 'var(--deleted)' if g.n_open else 'var(--added)' }}">{{ "{:,}".format(g.n_open) }}</div>
             <div class="label">仍存在</div>
         </div>
         <div class="stat-card">
-            <div class="num" style="color:#6b7183">{{ "{:,}".format(g.n_ignored) }}</div>
+            <div class="num" data-cnt="n_ignored" style="color:#6b7183">{{ "{:,}".format(g.n_ignored) }}</div>
             <div class="label">已忽略</div>
         </div>
         <div class="stat-card">
-            <div class="num" style="color:var(--added)">{{ "{:,}".format(g.n_handled) }}</div>
+            <div class="num" data-cnt="n_handled" style="color:var(--added)">{{ "{:,}".format(g.n_handled) }}</div>
             <div class="label">已处理</div>
         </div>
         <div class="stat-card">
@@ -222,8 +294,9 @@
     </div>
     {% endmacro %}
 
-    {# 明细表格：类型 / 各模块 item_columns（顺序一致）/ 操作；图片列渲染缩略图可放大 #}
-    {% macro me_rows(rows, g, dt_key, ft_key) %}
+    {# 明细表格：状态 / 各模块 item_columns（顺序一致）/ 操作；图片列渲染缩略图可放大
+       行上带 data-seg/mod/key/state/targets：忽略/已处理后前端据此同步另一段同目标的行 #}
+    {% macro me_rows(rows, g, seg, dt_key, ft_key) %}
     <table class="mi-rows">
         <thead>
             <tr>
@@ -234,14 +307,12 @@
         </thead>
         <tbody>
         {% for it in rows %}
-        <tr class="{{ it.status }}">
+        <tr class="mi-row {{ it.status }}" data-seg="{{ seg }}" data-mod="{{ it.module }}"
+            data-key="{{ it.doc_key }}" data-state="{{ it.state }}"
+            data-targets='{{ it.targets | tojson }}'>
             <td class="mi-type">
-                {% if it.status == 'ignored' %}<span class="badge badge-info">已忽略</span>
-                {% elif it.status == 'handled' %}<span class="badge badge-added">已处理</span>
-                {% else %}<span class="badge badge-failed">待处理</span>{% endif %}
-                {% if it.n_probs > 1 %}<span class="mi-na">×{{ it.n_probs }} 项</span>{% endif %}
-                <div class="mi-sum">问题：{{ it.summary }}</div>
-                {% if it.extra %}<div class="mi-sum mi-extra">{{ it.extra }}</div>{% endif %}
+                {# 只标识状态（不再列具体问题类型）：未处理 = 「待处理」，其余按状态标注 #}
+                <span class="js-state badge {% if it.status == 'ignored' %}badge-info{% elif it.status == 'handled' %}badge-added{% else %}badge-failed{% endif %}">{{ '已忽略' if it.status == 'ignored' else ('已处理' if it.status == 'handled' else '待处理') }}</span>
             </td>
             {% for f, label, render in g.columns %}
             <td>
@@ -287,6 +358,7 @@
                         <input type="hidden" name="ft" value="{{ ft_key }}">
                         <button class="mi-btn {{ 'on' if it.all_ignored else '' }}" name="act"
                                 value="{{ 'unignore' if it.all_ignored else 'ignore' }}"
+                                data-role="ignore"
                                 data-mode="{{ 'restore' if it.all_ignored else 'ignore' }}"
                                 data-what="{{ it.title|e }}" data-n="{{ it.n_probs }}"
                                 title="{{ '点击恢复：这些问题重新参与检查与统计' if it.all_ignored else '点击忽略（所有文档里都不再报，全局生效）' }}">{{ '↩️ 恢复忽略' if it.all_ignored else '🚫 忽略' }}</button>
@@ -298,6 +370,7 @@
                         <input type="hidden" name="ft" value="{{ ft_key }}">
                         <button class="mi-btn hd {{ 'on' if it.all_handled else '' }}" name="act"
                                 value="{{ 'unhandle' if it.all_handled else 'handle' }}"
+                                data-role="handle"
                                 data-mode="{{ 'restore' if it.all_handled else 'handle' }}"
                                 data-what="{{ it.title|e }}" data-n="{{ it.n_probs }}"
                                 title="{{ '点击撤销「已处理」：重新计入「仍存在」' if it.all_handled else '点击标记「已处理」（全局生效，不再计入「仍存在」）' }}">{{ '↩️ 撤销已处理' if it.all_handled else '✅ 已处理' }}</button>
@@ -311,30 +384,32 @@
     </table>
     {% endmacro %}
 
-    {% macro me_block(g, dt_key, ft_key, show_src=false) %}
+    {% macro me_block(g, seg, dt_key, ft_key, show_src=false) %}
     {% if not g %}
     <div class="mi-empty">没有可展示的检查模块（「关注的模块」可能一项都没选）。</div>
     {% else %}
+    <div class="mi-group" data-seg="{{ seg }}" data-mod="{{ g.module }}">
     {{ me_stats(g) }}
     {% if show_src and g.source %}<p class="me-hint" style="margin:-6px 0 10px;">来源：{{ g.source }}</p>{% endif %}
-    {% if g.open %}{{ me_rows(g.open, g, dt_key, ft_key) }}{% else %}
+    {% if g.open %}{{ me_rows(g.open, g, seg, dt_key, ft_key) }}{% else %}
     <div class="mi-empty">{% if not g.run_id %}该模块还没有成功检查记录。{% else %}关注领域内没有待处理的问题（本次检查 {{ g.checked }} 条，其中领域外 {{ g.n_out }} 条、正常 {{ g.n_normal }} 条）。{% endif %}</div>
     {% endif %}
     {% if g.open_more %}<div class="mi-more">还有 {{ g.open_more }} 条未展开，<a href="/{{ g.module }}/{% if g.run_id %}run/{{ g.run_id }}{% endif %}">到「{{ g.label }}」页看全部 →</a></div>{% endif %}
     {% if g.n_ignored %}
     <details class="mi-sub">
-        <summary>已忽略 {{ g.n_ignored }} 条（不计入「仍存在」，可恢复）</summary>
-        {{ me_rows(g.ignored, g, dt_key, ft_key) }}
+        <summary>已忽略 <span data-cnt="n_ignored">{{ "{:,}".format(g.n_ignored) }}</span> 条（不计入「仍存在」，可恢复）</summary>
+        {{ me_rows(g.ignored, g, seg, dt_key, ft_key) }}
         {% if g.ignored_more %}<div class="mi-more">还有 {{ g.ignored_more }} 条未展开。</div>{% endif %}
     </details>
     {% endif %}
     {% if g.n_handled %}
     <details class="mi-sub">
-        <summary>已处理 {{ g.n_handled }} 条（不计入「仍存在」，可撤销）</summary>
-        {{ me_rows(g.handled, g, dt_key, ft_key) }}
+        <summary>已处理 <span data-cnt="n_handled">{{ "{:,}".format(g.n_handled) }}</span> 条（不计入「仍存在」，可撤销）</summary>
+        {{ me_rows(g.handled, g, seg, dt_key, ft_key) }}
         {% if g.handled_more %}<div class="mi-more">还有 {{ g.handled_more }} 条未展开。</div>{% endif %}
     </details>
     {% endif %}
+    </div>
     {% endif %}
     {% endmacro %}
 
@@ -349,30 +424,30 @@
     {% endif %}
 
     {# ══ ① 每日增量问题（独立卡片）════════════════════════════════════ #}
-    <div class="me-card" id="me-daily">
+    <div class="me-card" id="me-daily" data-seg="daily">
         <h2>① 每日增量问题
-            {% if daily_totals.n_open %}<span class="me-badge">仍存在 {{ daily_totals.n_open }} 条</span>{% endif %}
+            <span class="me-badge" data-cnt-total="n_open">仍存在 {{ "{:,}".format(daily_totals.get('n_open', 0)) }} 条</span>
         </h2>
         <p class="me-hint">各模块<b>最新一次成功检查</b>的条目，按关注领域过滤；每模块一个页签，页签数字 = 仍存在。</p>
         {% if daily_active %}
         {{ me_tabs(daily_tabs, daily_tab, 'daily', daily_tab, full_tab) }}
-        {{ me_block(daily_active, daily_tab, full_tab) }}
+        {{ me_block(daily_active, 'daily', daily_tab, full_tab) }}
         {% else %}
         <div class="mi-empty">没有可展示的检查模块（「关注的模块」可能一项都没选）。</div>
         {% endif %}
     </div>
 
     {# ══ ② 全量问题（独立卡片）════════════════════════════════════════ #}
-    <div class="me-card" id="me-full">
+    <div class="me-card" id="me-full" data-seg="full">
         <h2>② 全量问题
-            {% if full_totals.n_open %}<span class="me-badge">仍存在 {{ full_totals.n_open }} 条</span>{% endif %}
+            <span class="me-badge" data-cnt-total="n_open">仍存在 {{ "{:,}".format(full_totals.get('n_open', 0)) }} 条</span>
         </h2>
         <p class="me-hint">跨 run 去重后<b>仍存在</b>的条目：图片 OCR / 英文文档 / 链接健康取
             {% if recheck_run %}<b>{{ recheck_run.run_at }}</b> 的复核结果{% else %}「当前全量问题」复核结果{% endif %}，
             系统合并整改取整站扫描；每模块一个页签。</p>
         {% if full_active %}
         {{ me_tabs(full_tabs, full_tab, 'full', daily_tab, full_tab) }}
-        {{ me_block(full_active, daily_tab, full_tab, true) }}
+        {{ me_block(full_active, 'full', daily_tab, full_tab, true) }}
         {% else %}
         <div class="mi-empty">没有可展示的检查模块（「关注的模块」可能一项都没选）。</div>
         {% endif %}
@@ -380,7 +455,7 @@
 
     {# ══ ③ 全局「已处理」清单（独立卡片，可撤销）══════════════════════ #}
     <div class="me-card">
-        <h2>🗂️ 全局「已处理」清单{% if handled_total %}<span class="me-badge">{{ handled_total }} 条</span>{% endif %}</h2>
+        <h2>🗂️ 全局「已处理」清单{% if handled_total %}<span class="me-badge" data-cnt-total="n_handled">{{ handled_total }} 条</span>{% endif %}</h2>
         <p class="me-hint">全局生效、不计入「仍存在」，保留可见、可撤销。</p>
         {% if handled_rows %}
         <details class="mi-sub" style="margin-top:6px;">
@@ -422,7 +497,7 @@
         <div class="mi-foot" style="border-top:none;padding-top:8px;">
             · <b>仍存在</b> = 最新一次检查里还有、且没被忽略 / 处理掉的条目；忽略与「已处理」都<b>全局生效</b>（谁先点谁生效），
             只做展示端过滤——run / items 原始数据不动，<b>恢复即时生效</b>，不必重跑检查。<br>
-            · 过滤按<b>收窄语义</b>：模块 ⟷ 文档范围 ⟷ 语言是【且】；大类之间是【或】；大类里选了细分就把该大类收窄到细分
+            · 过滤按<b>关注领域</b>：语言 ⟷ 模块 ⟷ 文档范围是【且】；大类之间是【或】；大类里选了细分就只看该细分下的文档
             （例：指南 + ArkUI = 只看 ArkUI 的指南）；行内「领域外 N 条」= 命中大类但落在细分之外的条目。<br>
             · 两张卡片各有模块页签（互不影响）；明细列与顺序和各模块页一致，图片列可点击放大；未设关注领域时不筛选。
         </div>
@@ -460,7 +535,12 @@
       });
     })();
 
-    /* 我的问题：忽略 / 已处理先弹站内确认框（恢复方向直接执行），确认后整页提交 → 服务端重算数字。 */
+    /* 我的问题：忽略 / 已处理
+       ① 先弹站内确认框（恢复方向不弹）；
+       ② 确认后 fetch 提交（X-Requested-With: fetch）→ 服务端回 JSON；
+       ③ 按（模块 + 目标 target / doc_key）在两段（#me-daily / #me-full）里找到同一目标，
+          原地同步 行状态 / 按钮 / 页签数字 / 统计卡 / 卡片徽标 —— 不必整页刷新。
+       取不到 JSON（旧浏览器 / 出错）时退回整页表单提交，功能不受影响。 */
     (function () {
       var mask = document.getElementById('ignMask');
       if (!mask) return;
@@ -475,16 +555,21 @@
         mbEl.textContent = '「' + (btn.dataset.what || '该条目') + '」的 '
           + (n ? n + ' 个' : '') + '问题将' + (isHandle ? '标记为「已处理」' : '标记为「已忽略」')
           + '，不再计入「仍存在」与日报（全局生效，谁先点谁生效）。'
-          + (isHandle ? '可随时在本条「已处理」里撤销。' : '可随时在本条「已忽略」里恢复。');
+          + (isHandle ? '可随时在本条「已处理」里撤销。' : '可随时在本条「已忽略」里恢复。')
+          + '「每日增量 / 全量」两段里同一目标会同步更新。';
         okEl.textContent = isHandle ? '确认已处理' : '确认忽略';
         pending = form; mask.hidden = false; cancelEl.focus();
       }
-      okEl.addEventListener('click', function () { var f = pending; closeConfirm(); if (f) submitForm(f); });
+      okEl.addEventListener('click', function () {
+        var f = pending; closeConfirm();
+        if (f) doSubmit(f, f.querySelector('button[name="act"]'));
+      });
       cancelEl.addEventListener('click', closeConfirm);
       mask.addEventListener('click', function (e) { if (e.target === mask) closeConfirm(); });
       document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && !mask.hidden) closeConfirm();
       });
+
       /* 按钮不在 form.submit() 的提交数据里，必须补一个隐藏字段带上 act */
       function submitForm(form) {
         var btn = form.querySelector('button[name="act"]');
@@ -495,12 +580,173 @@
         }
         form.submit();
       }
+
+      /* ── 提交：优先 fetch + JSON（原地同步两段）；失败退回整页提交 ── */
+      function doSubmit(form, btn) {
+        var fd;
+        try { fd = new FormData(form); } catch (e) { submitForm(form); return; }
+        if (btn && !fd.has(btn.name)) fd.append(btn.name, btn.value);
+        fetch(form.action, {method: 'POST', body: fd, credentials: 'same-origin',
+                            headers: {'X-Requested-With': 'fetch'}})
+          .then(function (r) {
+            if (!r.ok) throw new Error(r.status);
+            return r.json();
+          })
+          .then(function (j) {
+            if (!j || j.ok !== true) {          /* 参数/数据问题：提示，不跳转 */
+              toast((j && j.msg) || '操作未生效，请刷新后重试。', false);
+              return;
+            }
+            applySync(form, j);
+            toast(j.msg || '已保存', true);
+          })
+          .catch(function () { submitForm(form); });   /* 退路：整页提交 */
+      }
+
+      /* ── 行状态：class / 状态徽标 / 两个按钮的文案·取值·下次方向 ── */
+      function setRowState(tr, st) {
+        tr.classList.remove('open', 'ignored', 'handled');
+        tr.classList.add(st);
+        tr.setAttribute('data-state', st);
+        var b = tr.querySelector('.js-state');
+        if (b) {
+          b.textContent = st === 'ignored' ? '已忽略' : (st === 'handled' ? '已处理' : '待处理');
+          b.className = 'js-state badge '
+            + (st === 'ignored' ? 'badge-info' : (st === 'handled' ? 'badge-added' : 'badge-failed'));
+        }
+        var ig = tr.querySelector('button[data-role="ignore"]');
+        if (ig) {
+          var on = (st === 'ignored');
+          ig.value = on ? 'unignore' : 'ignore';
+          ig.textContent = on ? '↩️ 恢复忽略' : '🚫 忽略';
+          ig.dataset.mode = on ? 'restore' : 'ignore';
+          ig.classList.toggle('on', on);
+        }
+        var hd = tr.querySelector('button[data-role="handle"]');
+        if (hd) {
+          var on2 = (st === 'handled');
+          hd.value = on2 ? 'unhandle' : 'handle';
+          hd.textContent = on2 ? '↩️ 撤销已处理' : '✅ 已处理';
+          hd.dataset.mode = on2 ? 'restore' : 'handle';
+          hd.classList.toggle('on', on2);
+        }
+      }
+
+      function rowTargets(tr) {
+        try {
+          var a = JSON.parse(tr.getAttribute('data-targets') || '[]');
+          return (a && a.length) ? a : [];
+        } catch (e) { return []; }
+      }
+      /* 同一目标：模块相同 + 目标有交集（行无目标时退回 doc_key 相等） */
+      function matched(tr, key, tgset) {
+        var rt = rowTargets(tr);
+        if (rt.length) {
+          for (var i = 0; i < rt.length; i++) { if (tgset[rt[i]]) return true; }
+          return false;
+        }
+        return !!(key && tr.getAttribute('data-key') === key);
+      }
+      /* 该行的目标是否被本次操作「全部」覆盖：没被全覆盖说明实际还剩问题，状态不能跟着改 */
+      function covered(tr, tg) {
+        var rt = rowTargets(tr);
+        if (!rt.length) return true;
+        var set = {};
+        for (var i = 0; i < tg.length; i++) set[tg[i]] = 1;
+        for (var j = 0; j < rt.length; j++) { if (!set[rt[j]]) return false; }
+        return true;
+      }
+
+      function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+      function addNum(el, dv) {
+        var cur = parseInt((el.textContent || '0').replace(/[^0-9-]/g, ''), 10);
+        if (isNaN(cur)) cur = 0;
+        var v = Math.max(0, cur + dv);
+        el.textContent = fmt(v);
+        return v;
+      }
+      /* 计数：该段（daily/full）里该模块的 页签数字 / 统计卡 / 「已忽略·已处理」条数 / 卡片徽标 */
+      function bumpCounts(seg, mod, field, dv) {
+        var root = document.getElementById('me-' + seg);
+        if (!root) return;
+        var sel = '[data-cnt="' + field + '"]';
+        var n;
+        root.querySelectorAll('.tab[data-mod="' + mod + '"] ' + sel)
+            .forEach(function (el) { n = addNum(el, dv); });
+        root.querySelectorAll('.mi-group[data-mod="' + mod + '"] ' + sel)
+            .forEach(function (el) {
+              n = addNum(el, dv);
+              if (field === 'n_open') el.style.color = n > 0 ? 'var(--deleted)' : 'var(--added)';
+            });
+        if (typeof n === 'undefined') return;      /* 该段没有这个模块 → 徽标不动 */
+        root.querySelectorAll('[data-cnt-total="' + field + '"]')
+            .forEach(function (el) { addNum(el, dv); });
+      }
+
+      /* ── 两段联动：按（模块 + target/doc_key）同步行状态与计数 ── */
+      function applySync(form, j) {
+        var tr0 = form.closest ? form.closest('tr.mi-row') : null;
+        var mod = j.module || (tr0 ? tr0.dataset.mod : '') || '';
+        var key = j.doc_key || (tr0 ? tr0.getAttribute('data-key') : '') || '';
+        var tg = j.targets || [];
+        var tgset = {};
+        for (var i = 0; i < tg.length; i++) tgset[tg[i]] = 1;
+        var deltas = {};
+        function touch(tr, st) {
+          var os = tr.getAttribute('data-state') || 'open';
+          if (os === st) return;
+          var seg = tr.dataset.seg || 'daily';
+          var d = deltas[seg] || (deltas[seg] = {n_open: 0, n_ignored: 0, n_handled: 0});
+          if (d['n_' + os] !== undefined) d['n_' + os] -= 1;
+          if (d['n_' + st] !== undefined) d['n_' + st] += 1;
+          setRowState(tr, st);
+          tr.classList.remove('sync-pulse');
+          void tr.offsetWidth;
+          tr.classList.add('sync-pulse');
+        }
+        if (tr0) touch(tr0, j.status);
+        var rows = document.querySelectorAll('tr.mi-row[data-mod="' + mod + '"]');
+        rows.forEach(function (tr) {
+          if (tr === tr0) return;                       /* 点的那行已处理 */
+          if (!matched(tr, key, tgset)) return;
+          if (!covered(tr, tg)) return;                 /* 目标没全覆盖 → 实际仍有问题，别动 */
+          touch(tr, j.status);
+        });
+        Object.keys(deltas).forEach(function (seg) {
+          var d = deltas[seg];
+          Object.keys(d).forEach(function (k) { if (d[k]) bumpCounts(seg, mod, k, d[k]); });
+        });
+        /* ③「已处理」清单：撤销后该卡片总数同步（存在才更新） */
+        if (j.act === 'unhandle_id') {
+          var tot = document.querySelector('[data-cnt-total="n_handled"]');
+          if (tot) addNum(tot, -1);
+        }
+      }
+      window.__meSync = applySync;   /* 便于测试/排查：控制台可直接调用 */
+
+      function toast(msg, ok) {
+        var el = document.getElementById('meToast');
+        if (!el) {
+          el = document.createElement('div');
+          el.id = 'meToast'; el.className = 'me-toast';
+          document.body.appendChild(el);
+        }
+        el.textContent = msg;
+        el.classList.add('show');
+        clearTimeout(el._t);
+        el._t = setTimeout(function () { el.classList.remove('show'); }, 3200);
+      }
+
       document.addEventListener('submit', function (e) {
         var form = e.target;
         if (!form.classList || !form.classList.contains('mi-f')) return;
         var btn = form.querySelector('button[name="act"]');
-        if (!btn || btn.dataset.mode === 'restore') return;   /* 恢复方向直接提交 */
+        if (!btn) return;
         e.preventDefault();
+        if (btn.dataset.mode === 'restore') {   /* 恢复方向：不弹框，直接 fetch */
+          doSubmit(form, btn);
+          return;
+        }
         openConfirm(btn, form);
       });
     })();

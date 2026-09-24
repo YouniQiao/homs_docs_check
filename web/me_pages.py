@@ -1,4 +1,4 @@
-"""「我的」→ 关注领域（P2c：两级结构 + 独立配置页 + 收窄语义）。
+"""「我的」→ 关注领域（P2c：两级结构 + 独立配置页 + 细分范围语义）。
 
 口径（用户 2026-09 拍板，替代 P2a 的 4 维平铺 + 并集/交集两种口径）：
   ① 关注的模块（module）—— 本站 4 个：ocr / encheck / linkcheck / sysmerge；不选 = 全部
@@ -7,7 +7,7 @@
        API 参考（harmonyos-references）→ 细分 Kit（kit@references）
        FAQ / 版本说明 / 最佳实践      → 无细分
   ③ 语言（lang）—— docs.lang 的取值：cn（中文）/ en（英文）；不选 = 全部语言
-  关系：① ⟷ ② ⟷ ③ = 且；② 大类之间 = 或；大类内细分 = 或；大类 + 细分 = 收窄
+  关系：① ⟷ ② ⟷ ③ = 且；② 大类之间 = 或；大类内细分 = 或；大类 + 细分 = 只看该细分
         （勾「指南」再勾「ArkUI」→ 只看 ArkUI 的指南，不是「全部指南 ∪ ArkUI 的参考」）。
         语言是独立的一层「且」（选 cn → 只看中文文档，与文档范围叠加）。
 
@@ -16,7 +16,7 @@ module / type / kit@guides / kit@references / ide@guides / lang；保存 = 整�
 P2a 的旧 dim（catalog / kit / ide）读时按下表折算，用户在新页面保存一次即迁移：
   catalog → type；kit → kit@guides + kit@references；ide → ide@guides。
 
-口径预览：按上面的收窄语义算命中文档数（scope_where 的 SQL 与 doc_hit 的判定同源），
+文档范围预览：按上面的细分范围语义算命中文档数（scope_where 的 SQL 与 doc_hit 的判定同源），
 不再有并集/交集开关（POST /me/logic 保留但已废弃，只存不影响取数）。
 module 不是 docs 的列，无法按 doc_key 判定，不参与文档数。
 
@@ -24,7 +24,7 @@ module 不是 docs 的列，无法按 doc_key 判定，不参与文档数。
 
 「我的问题」（P2b，本文件）——**两张独立卡片**：
   ① 每日增量（卡片 #me-daily）：各模块**最新一次成功 run** 的条目（日常 run 是增量的），
-     落在关注领域（**收窄语义**）内的「问题条目」，**每个模块一个页签**；每条给「忽略 / 已处理」。
+     落在关注领域（**细分范围语义**）内的「问题条目」，**每个模块一个页签**；每条给「忽略 / 已处理」。
   ② 全量问题（卡片 #me-full）：**跨 run 按 item_key 去重后仍存在**的条目——优先取
      「当前全量问题」（module_key=recheck）最新一次成功 run 里该模块的条目（recheck 把历史
      问题跨 run 去重后逐条复核，只写「仍存在」的）；recheck 不覆盖的模块（sysmerge）退回
@@ -39,10 +39,12 @@ module 不是 docs 的列，无法按 doc_key 判定，不参与文档数。
 
 路由：
   GET  /me          「我的」（本文件只提供上下文；页面路由在 auth.py）?dt= / ?ft= 选页签
-  GET  /me/areas   关注领域配置页（①模块 + ②文档范围 + ③语言；JS 按大类展开细分）
+  GET  /me/areas   关注领域配置页（①语言 + ②模块 + ③文档范围；JS 按大类展开细分）
   POST /me/areas   整体保存（module / type / kit@* / ide@* / lang 六类 dim）→ 302 回 /me/areas
   POST /me/logic   已废弃的口径开关（只存不影响取数）→ 302 回 /me
   POST /me/issue   run_id + item_id + act=ignore|unignore|handle|unhandle → 302 回 /me
+                   （带 X-Requested-With: fetch 时改回 JSON：该条目最新状态 + 目标列表，
+                    供前端把「每日增量 / 全量」两段里同一目标的行 / 按钮 / 计数同步更新）
 """
 
 from __future__ import annotations
@@ -68,7 +70,7 @@ DB_PATH = str(BASE_DIR / "index.db")
 #      type=harmonyos-guides     可细分 kit@guides / ide@guides
 #      type=harmonyos-references 可细分 kit@references
 #      FAQ / 版本说明 / 最佳实践   无细分
-# 关系：① ⟷ ② = 且；② 大类之间 = 或；大类内细分 = 或；大类 + 细分 = 收窄
+# 关系：① ⟷ ② = 且；② 大类之间 = 或；大类内细分 = 或；大类 + 细分 = 只看该细分
 #   （勾「指南」再勾「ArkUI」→ 只看 ArkUI 的指南，而不是「全部指南 ∪ ArkUI 的参考」）。
 # 存储：沿用 user_areas 表，dim 用 module / type / kit@guides / kit@references /
 # ide@guides / lang。lang 是独立的一层「且」（不选 = 全部语言；选 cn/en = 只要这些语言）。
@@ -126,8 +128,8 @@ LANG_HINT = "按文档语言过滤；不选 = 全部语言（中文 + 英文）�
 
 # 关注领域的关系说明（页面文案统一从这里取，避免多处口径漂移）
 SCOPE_RULE = (
-    "① 模块 ⟷ ② 文档范围 ⟷ ③ 语言 之间是【且】；"
-    "② 里各大类之间是【或】，大类与它的细分之间是【收窄】"
+    "① 语言 ⟷ ② 模块 ⟷ ③ 文档范围 之间是【且】；"
+    "③ 里各大类之间是【或】，勾了某个大类里的细分就只看该细分下的文档"
     "（勾「指南」再勾「ArkUI」= 只看 ArkUI 的指南）。"
     "三者都不选 = 全部。"
 )
@@ -232,7 +234,7 @@ def areas_effective(areas: dict) -> dict:
 
 
 def areas_scope(areas: dict) -> dict:
-    """归一化关注领域 → **收窄后**的文档范围。
+    """归一化关注领域 → **细分后**的文档范围。
 
     {"modules": [...], "langs": [...],
      "groups": [{"catalog","label","narrowed","kits","ides","subs"}...],
@@ -282,7 +284,7 @@ def _groups_where(groups: list) -> tuple[str, list]:
         if g["ides"]:
             parts.append("ide IN (%s)" % ",".join("?" * len(g["ides"])))
             p += list(g["ides"])
-        if parts:  # 大类 + 细分 = 收窄
+        if parts:  # 大类 + 细分 = 只看该细分
             clauses.append("(catalog=? AND (%s))" % " OR ".join(parts))
             params.append(g["catalog"])
             params += p
@@ -295,7 +297,7 @@ def _groups_where(groups: list) -> tuple[str, list]:
 
 
 def scope_where(scope: dict) -> tuple[str, list]:
-    """收窄范围 → (SQL WHERE 片段, 参数)；片段为空串 = 不限文档（全部文档）。
+    """细分范围 → (SQL WHERE 片段, 参数)；片段为空串 = 不限文档（全部文档）。
 
     语言（langs）是独立的一层「且」：与文档范围的 OR 组用 AND 连接
     （选 cn + 指南 → 中文的指南）。都不选 = 全部文档。
@@ -317,7 +319,7 @@ def scope_where(scope: dict) -> tuple[str, list]:
 
 
 def doc_hit(scope: dict, meta: dict, detail: dict | None = None) -> bool:
-    """某文档 / 问题条目是否落在收窄范围内（与 scope_where 同一套判定，两处必须一致）。
+    """某文档 / 问题条目是否落在细分范围内（与 scope_where 同一套判定，两处必须一致）。
 
     meta 优先（docs 表的 catalog/kit/ide/lang），取不到时回落条目 detail。
     lang 是独立的一层「且」，先判（语言不在范围内 → 直接不算命中）。
@@ -345,9 +347,9 @@ def doc_hit(scope: dict, meta: dict, detail: dict | None = None) -> bool:
     return False
 
 
-# ── 口径预览：按收窄语义算命中文档（只读 docs 表，不写数据）──────────────
+# ── 文档范围预览：按细分范围语义算命中文档（只读 docs 表，不写数据）──────────────
 def scope_preview(db, scope: dict, sample_n: int = _MAX_SAMPLE) -> dict:
-    """收窄口径的预览数据：命中文档数 + 每个大类明细 + 2-3 个示例文档。
+    """文档范围口径的预览数据：命中文档数 + 每个大类明细 + 2-3 个示例文档。
 
     与 scope_where 用同一段 SQL 条件，保证「预览数字」与「我的问题」实际过滤一致。
     module 不是 docs 的列，无法按 doc_key 判定，不参与文档数。
@@ -536,17 +538,17 @@ def _docs_meta(db, keys) -> dict:
 
 
 def _area_selection(areas: dict) -> tuple[dict, list]:
-    """已选关注领域 → (收窄范围 scope, 已选模块列表)。
+    """已选关注领域 → (细分范围 scope, 已选模块列表)。
 
-    范围判定统一走 areas_scope / scope_where（收窄语义），问题列表的条目过滤用
-    同一套判定（doc_hit），保证「口径预览的数字」与「实际展示的条目」一致。
+    范围判定统一走 areas_scope / scope_where（细分范围语义），问题列表的条目过滤用
+    同一套判定（doc_hit），保证「文档范围预览的数字」与「实际展示的条目」一致。
     """
     scope = areas_scope(areas)
     return scope, list(scope.get("modules") or [])
 
 
 def _doc_hit(meta: dict, detail: dict, scope: dict) -> bool:
-    """收窄口径：条目所属文档是否在范围内（未选任何文档范围 = 不限制）。"""
+    """文档范围口径：条目所属文档是否在范围内（未选任何文档范围 = 不限制）。"""
     return doc_hit(scope, meta, detail)
 
 
@@ -628,7 +630,7 @@ def _build_issue_group(db, mk: str, run: dict | None, raw_items: list, metas: di
                        handled_rules: dict, source: str = "") -> dict:
     """把一次 run 的条目整理成一个模块分组（含三态计数 + 三条列表）。
 
-    条目是否算「我的」走收窄语义（scope）：未选任何文档范围 = 不限（全部文档）；
+    条目是否算「我的」走细分范围语义（scope）：未选任何文档范围 = 不限（全部文档）；
     命中大类但不在该大类的细分里 = 领域外（计入 n_out）。
     """
     g = {"module": mk, "label": ISSUE_LABELS.get(mk, mk), "icon": ISSUE_ICONS.get(mk, ""),
@@ -650,6 +652,7 @@ def _build_issue_group(db, mk: str, run: dict | None, raw_items: list, metas: di
             g["n_normal"] += 1
             continue
         summary, extra = _item_summary(mk, d, it["item_type"], probs)
+        bucket = st["status"] if st["status"] in ("open", "ignored", "handled") else "open"
         row = {
             "id": it["id"], "run_id": g["run_id"], "module": mk,
             "module_label": g["label"],
@@ -659,16 +662,18 @@ def _build_issue_group(db, mk: str, run: dict | None, raw_items: list, metas: di
             "kit": meta.get("kit") or d.get("kit") or "", "ide": meta.get("ide") or "",
             "lang": meta.get("lang") or d.get("lang") or "", "item_type": it["item_type"],
             "summary": summary, "extra": extra, "status": st["status"],
+            "state": bucket,
             "n_probs": st["n_probs"], "n_open": st["n_open"],
             "all_ignored": st["all_ignored"], "all_handled": st["all_handled"],
             "url": meta.get("url") or d.get("doc_url") or d.get("url") or "",
             "can_act": bool(probs),
+            # 该条目上每个问题的「目标」：前端按（模块 + 目标）匹配两段里的同一目标并同步
+            "targets": [p["target"] for p in probs],
             # 明细渲染：整列照搬模块页（detail = items.detail_json 原样；links = link_list 列数据）
             "detail": d, "links": _link_rows(mk, d, probs),
             "n_ign": st["n_ignored"], "n_hand": st["n_handled"],
         }
         g["n_total"] += 1
-        bucket = st["status"] if st["status"] in ("open", "ignored", "handled") else "open"
         g["n_" + bucket] += 1
         g[bucket].append(row)
     for key in ("open", "ignored", "handled"):
@@ -702,6 +707,24 @@ def _pick_group(groups: list, key: str) -> dict | None:
         if g["module"] == key:
             return g
     return groups[0]
+
+
+def _is_fetch() -> bool:
+    """请求是否来自站内 fetch（模板劫持表单提交时带 X-Requested-With: fetch）。
+
+    是 → 回 JSON（前端原地同步，不必整页刷新）；否 → 照旧 302 回 /me（无 JS 也能用）。
+    """
+    try:
+        return request.headers.get("X-Requested-With", "").lower() == "fetch"
+    except Exception:  # noqa: BLE001 - 无请求上下文时按非 fetch 处理
+        return False
+
+
+def _json_state(payload: dict):
+    """fetch 请求的 JSON 响应（延迟导入 jsonify，避免模块级依赖）。"""
+    from flask import jsonify
+
+    return jsonify(payload)
 
 
 def _back_to_me() -> str:
@@ -812,11 +835,18 @@ def issue_context(db, areas: dict, daily_tab: str = "", full_tab: str = "") -> d
 
 
 def scope_summary(scope: dict) -> list[dict]:
-    """收窄范围的文字回显：[{label, detail, narrowed}]（/me 只读区与 /me/areas 共用）。"""
+    """细分范围的文字回显（/me 只读区与 /me/areas 共用）。
+
+    每条：``{label, catalog, detail, detail_items, narrowed, count}``
+    （``detail`` 是「、」拼接的字符串；``detail_items`` 是细分取值列表，
+    供 /me 的胶囊分组渲染 —— 每个细分一个独立小胶囊）。
+    """
     out: list = []
     for g in (scope or {}).get("groups") or []:
-        detail = ("、".join(s["value"] for s in g["subs"]) if g["narrowed"] else "全部")
-        out.append({"label": g["label"], "detail": detail,
+        items = [s["value"] for s in g["subs"]]
+        detail = ("、".join(items) if g["narrowed"] else "全部")
+        out.append({"label": g["label"], "catalog": g.get("catalog", ""),
+                    "detail": detail, "detail_items": items,
                     "narrowed": g["narrowed"], "count": len(g["subs"])})
     return out
 
@@ -828,7 +858,7 @@ def lang_summary(scope: dict) -> list[dict]:
 
 
 def build_areas_view(db, eff: dict, options: dict) -> dict:
-    """GET /me/areas 渲染用：①模块 + ②大类（含细分选项与已选回填）+ ③语言。"""
+    """GET /me/areas 渲染用：①语言 + ②模块 + ③大类（含细分选项与已选回填）。"""
     checked = {d: set(eff.get(d) or []) for d in NEW_DIMS}
     opt_map = options or {}
     modules = [{"value": v, "label": MODULE_LABELS[v],
@@ -863,7 +893,7 @@ def build_areas_view(db, eff: dict, options: dict) -> dict:
 
 
 def areas_page_context(db, user: dict) -> dict:
-    """GET /me/areas 上下文：选项 + 已选回填 + 当前收窄口径预览（含语言）。"""
+    """GET /me/areas 上下文：选项 + 已选回填 + 当前已关注领域文档范围预览（含语言）。"""
     uid = int(user["id"])
     options = area_options(db)
     raw = selected_areas(db, uid)
@@ -917,7 +947,7 @@ def _empty_context() -> dict:
 
 
 def me_context(db, user: dict, daily_tab: str = "", full_tab: str = "") -> dict:
-    """/me 页面渲染关注领域（只读回显）+ 收窄口径预览 + 我的问题所需上下文；
+    """/me 页面渲染关注领域（只读回显）+ 已关注领域文档范围预览 + 我的问题所需上下文；
     预览/问题取数异常不该让页面挂掉。
 
     daily_tab / full_tab：问题列表两段各自的模块页签（来自 ?dt= / ?ft=）。
@@ -986,7 +1016,7 @@ def register_me(app, db_path: str = DB_PATH):
 
     @me_bp.route("/me/areas", methods=["GET", "POST"], strict_slashes=False)
     def me_areas():
-        """「关注领域」独立配置页：①模块 + ②文档范围（大类 + 大类内细分）+ ③语言。
+        """「关注领域」独立配置页：①语言 + ②模块 + ③文档范围（大类 + 大类内细分）。
 
         GET  渲染配置页（选项从 docs 表 DISTINCT 取，已保存的回填）。
         POST 整体替换该用户的配置（user_areas 表，dim = module / type /
@@ -1060,7 +1090,7 @@ def register_me(app, db_path: str = DB_PATH):
     def me_logic():
         """【已废弃】旧的口径开关（union / intersection）。
 
-        收窄语义上线后全站只有一种口径，这里保留路由只为兼容旧书签 / 旧表单：
+        细分范围语义上线后全站只有一种口径，这里保留路由只为兼容旧书签 / 旧表单：
         仍会保存开关值，但不再影响任何取数。
         """
         user, resp = _require_user()
@@ -1077,8 +1107,8 @@ def register_me(app, db_path: str = DB_PATH):
         finally:
             db.close()
         if saved:
-            flash("ℹ️ 口径开关已记录，但已废弃：现在统一按「收窄语义」取数"
-                  "（见「🎯 关注领域」与「📐 口径预览」的说明）。", "info")
+            flash("ℹ️ 口径开关已记录，但已废弃：现在统一按「🎯 关注领域」的文档范围取数"
+                  "（见「🎯 关注领域」与「📐 已关注领域文档范围」）。", "info")
         else:
             flash("⚠️ 口径保存失败，请稍后重试。", "warn")
         return redirect("/me")
@@ -1093,6 +1123,8 @@ def register_me(app, db_path: str = DB_PATH):
         - 两者都是**全局生效**（谁先点谁生效，不按用户区分）；run / items 数据一律不动，
           所以恢复即时生效、不必重跑检查。
         - 表单里带 dt / ft（两段当前页签）→ 回跳时保留，用户不会「操作完被弹回第一个模块」。
+        - 带 ``X-Requested-With: fetch``（模板劫持表单提交）时回 JSON 而不是 302：
+          含该条目**最新状态**与问题目标列表，前端据此同步另一段里同一目标的行 / 按钮 / 计数。
         """
         user, resp = _require_user()
         if resp is not None:
@@ -1103,21 +1135,46 @@ def register_me(app, db_path: str = DB_PATH):
         act = (request.form.get("act") or "").strip()
         who = (user or {}).get("login") or (user or {}).get("name") or ""
 
+        def _fail(msg: str):
+            """参数/数据不合法：照旧 flash + 回 /me；fetch 请求回同样的 JSON 结构（ok=false）。"""
+            flash(msg, "warn")
+            if _is_fetch():
+                return _json_state({"ok": False, "act": act, "msg": msg, "status": ""})
+            return redirect(_back_to_me())
+
         # 「③ 已处理」清单里的撤销：直接按 handled 记录 id 恢复（不需要 run/item）
         if act == "unhandle_id":
             hid = request.form.get("handled_id", type=int)
             db = IndexDB(db_path)
+            rec: dict | None = None
+            ign_after = False
+            ok = False
             try:
-                ok = bool(hid) and db.restore_handled(hid, restored_by=who)
+                if hid:
+                    rec = next((r for r in db.list_handled(active_only=True)
+                                if r["id"] == hid), None)
+                    if rec:   # 恢复前先看该目标是否还被忽略（忽略优先级 > 已处理）
+                        rules = ignores.active_map(db)
+                        ign_after = ignores.is_ignored(rules, rec["module_key"],
+                                                       rec["target"], rec["kind"],
+                                                       rec.get("doc_key") or "")
+                    ok = db.restore_handled(hid, restored_by=who)
             finally:
                 db.close()
-            flash("↩️ 已撤销该「已处理」记录（重新计入「仍存在」）。" if ok
-                  else "ℹ️ 该记录已不是生效中的「已处理」。", "ok" if ok else "info")
+            msg = ("↩️ 已撤销该「已处理」记录（重新计入「仍存在」）。" if ok
+                   else "ℹ️ 该记录已不是生效中的「已处理」。")
+            flash(msg, "ok" if ok else "info")
+            if _is_fetch():
+                return _json_state({
+                    "ok": bool(ok), "act": "unhandle_id", "msg": msg,
+                    "module": (rec or {}).get("module_key", ""),
+                    "doc_key": (rec or {}).get("doc_key") or "",
+                    "targets": [rec["target"]] if rec else [],
+                    "status": "ignored" if (ok and ign_after) else "open"})
             return redirect(_back_to_me())
 
         if act not in ("ignore", "unignore", "handle", "unhandle") or not run_id or not item_id:
-            flash("⚠️ 操作参数不完整，已忽略本次操作。", "warn")
-            return redirect(_back_to_me())
+            return _fail("⚠️ 操作参数不完整，已忽略本次操作。")
 
         db = IndexDB(db_path)
         try:
@@ -1125,8 +1182,7 @@ def register_me(app, db_path: str = DB_PATH):
                 "SELECT item_type, detail_json FROM items WHERE id=? AND run_id=?",
                 (item_id, run_id)).fetchone()
             if not row:
-                flash("⚠️ 该条目不存在（可能已被清理），请刷新后重试。", "warn")
-                return redirect(_back_to_me())
+                return _fail("⚠️ 该条目不存在（可能已被清理），请刷新后重试。")
             try:
                 detail = json.loads(row[1] or "{}")
             except Exception:  # noqa: BLE001
@@ -1134,12 +1190,10 @@ def register_me(app, db_path: str = DB_PATH):
             run = db.get_run(run_id) or {}
             mk = detail.get("module") or run.get("module_key") or ""
             if mk not in ISSUE_MODULES or not ignores.supports(mk):
-                flash("⚠️ 该条目所属模块不支持忽略 / 已处理。", "warn")
-                return redirect(_back_to_me())
+                return _fail("⚠️ 该条目所属模块不支持忽略 / 已处理。")
             probs = ignores.item_problems(mk, detail, row[0])
             if not probs:
-                flash("⚠️ 该条目没有可操作的问题项。", "warn")
-                return redirect(_back_to_me())
+                return _fail("⚠️ 该条目没有可操作的问题项。")
 
             ip = _client_ip()
             n = 0
@@ -1149,27 +1203,53 @@ def register_me(app, db_path: str = DB_PATH):
                             mk, p["target"], p["kind"], doc_key="",
                             reason="我的问题页", ip=ip):
                         n += 1
-                flash(f"✅ 已忽略 {n} 个问题（全局生效，可在本条「已忽略」里恢复）。" if n
-                      else "ℹ️ 这些问题的忽略已经生效过了。", "ok" if n else "info")
+                msg = (f"✅ 已忽略 {n} 个问题（全局生效，可在本条「已忽略」里恢复）。" if n
+                       else "ℹ️ 这些问题的忽略已经生效过了。")
             elif act == "unignore":
                 for p in probs:
                     n += ignores._backend(db, mk).restore_ignores_for(
                         mk, p["target"], p["kind"], p.get("doc_key", ""), ip=ip)
-                flash(f"↩️ 已恢复 {n} 个忽略（重新计入「仍存在」）。" if n
-                      else "ℹ️ 没有可恢复的忽略。", "ok" if n else "info")
+                msg = (f"↩️ 已恢复 {n} 个忽略（重新计入「仍存在」）。" if n
+                       else "ℹ️ 没有可恢复的忽略。")
             elif act == "handle":
                 for p in probs:
                     if db.mark_handled(mk, p["target"], p["kind"], doc_key="",
                                        note="我的问题页", created_by=who):
                         n += 1
-                flash(f"✅ 已标记「已处理」{n} 个问题（全局生效，不再计入「仍存在」）。" if n
-                      else "ℹ️ 这些问题的「已处理」已经生效过了。", "ok" if n else "info")
+                msg = (f"✅ 已标记「已处理」{n} 个问题（全局生效，不再计入「仍存在」）。" if n
+                       else "ℹ️ 这些问题的「已处理」已经生效过了。")
             else:  # unhandle
                 for p in probs:
                     n += db.restore_handled_for(mk, p["target"], p["kind"],
                                                 p.get("doc_key", ""), restored_by=who)
-                flash(f"↩️ 已撤销「已处理」{n} 个问题（重新计入「仍存在」）。" if n
-                      else "ℹ️ 没有可撤销的「已处理」。", "ok" if n else "info")
+                msg = (f"↩️ 已撤销「已处理」{n} 个问题（重新计入「仍存在」）。" if n
+                       else "ℹ️ 没有可撤销的「已处理」。")
+            flash(msg, "ok" if n else "info")
+
+            if _is_fetch():
+                # 回读该条目此刻的最新状态：前端据此同步**另一段**里同（模块 + 目标）的行 /
+                # 按钮 / 计数（两段各自的页签数字、统计卡、卡片徽标也在前端按增量更新）。
+                resp = {"ok": bool(n), "act": act, "msg": msg, "module": mk,
+                        "doc_key": detail.get("doc_key") or "",
+                        "targets": [p["target"] for p in probs],
+                        "status": "open", "n_probs": len(probs), "n_open": 0,
+                        "n_ignored": 0, "n_handled": 0,
+                        "all_ignored": False, "all_handled": False}
+                try:
+                    probs2, st2 = _problem_state(mk, detail, row[0],
+                                                 ignores.active_map(db),
+                                                 db.active_handled_map())
+                    resp.update({
+                        "status": (st2["status"] if st2["status"] in
+                                   ("open", "ignored", "handled") else "open"),
+                        "targets": [p["target"] for p in probs2],
+                        "n_open": st2["n_open"], "n_ignored": st2["n_ignored"],
+                        "n_handled": st2["n_handled"],
+                        "all_ignored": st2["all_ignored"],
+                        "all_handled": st2["all_handled"]})
+                except Exception:  # noqa: BLE001 - 回读失败不影响写操作本身
+                    pass
+                return _json_state(resp)
         finally:
             db.close()
         return redirect("/me#me-issues")

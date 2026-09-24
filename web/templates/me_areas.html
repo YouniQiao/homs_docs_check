@@ -79,7 +79,6 @@
                box-shadow: var(--shadow); }
     .ar-back:hover { opacity: .92; }
     .ar-topbar-s { font-size: 12.5px; color: var(--muted); }
-    .ar-col.ar-col-lang { flex: 1 1 200px; min-width: 190px; }
 </style>
 
 <div class="ar-wrap">
@@ -94,10 +93,10 @@
         <a class="ar-back" href="/me">← 返回「我的」</a>
         <span class="ar-topbar-s">配置改完记得点页面下方的「💾 保存关注领域」才生效。</span>
     </div>
+
+    <form method="post" action="/me/areas" id="arForm">
     <div class="ar-card">
         <h1>🎯 设置关注领域</h1>
-        <p class="ar-hint">① 模块 + ② 文档范围 + ③ 语言，三者是【且】。</p>
-        <div class="ar-rule">🧭 {{ scope_rule }}</div>
         {% if has_legacy %}
         <div class="ar-legacy">ℹ️ 检测到 P2a 的旧版 4 维配置，已按新结构折算显示在下面
             （旧「文档类型」→ 大类；旧「Kit」→ 指南的 Kit + API 参考的 Kit；旧「IDE 分组」→ 指南的 IDE 分组）。
@@ -106,15 +105,30 @@
         {% with msgs = get_flashed_messages(with_categories=true) %}
         {% if msgs %}{% for cat, m in msgs %}<div class="ar-flash {{ cat }}">{{ m }}</div>{% endfor %}{% endif %}
         {% endwith %}
-    </div>
-
-    <form method="post" action="/me/areas" id="arForm">
-    <div class="ar-card">
         <div class="ar-cols">
-            {# ── ① 关注的模块 ── #}
+            {# ── ① 关注的文档语言（与 ②③ 是【且】；不选 = 全部语言）── #}
             <div class="ar-col">
                 <div class="ar-col-h">
-                    <span class="t">① 关注的模块</span>
+                    <span class="t">① 关注的文档语言</span>
+                    <span class="n">不选 = 全部</span>
+                </div>
+                <p class="ar-sub-hint">{{ lang_hint }}</p>
+                {% for l in areas_view.langs %}
+                <label class="ar-opt{% if l.checked %} on{% endif %}">
+                    <input type="checkbox" name="lang" value="{{ l.value }}"
+                           {% if l.checked %}checked{% endif %}>
+                    <span>{{ l.label }}</span>
+                    {% if l.count_fmt %}<span class="cn">{{ l.count_fmt }} 篇</span>{% endif %}
+                </label>
+                {% else %}
+                <div class="ar-empty">暂无可用取值。</div>
+                {% endfor %}
+            </div>
+
+            {# ── ② 关注的模块 ── #}
+            <div class="ar-col">
+                <div class="ar-col-h">
+                    <span class="t">② 关注的模块</span>
                     <span class="n">不选 = 全部模块</span>
                 </div>
                 <p class="ar-sub-hint">只影响「我的问题」里展示哪几类问题。</p>
@@ -130,10 +144,10 @@
             {# ── ② 关注的文档范围 ── #}
             <div class="ar-col">
                 <div class="ar-col-h">
-                    <span class="t">② 关注的文档范围</span>
+                    <span class="t">③ 关注的文档范围</span>
                     <span class="n">不选 = 全部文档（{{ preview.total_docs_fmt if preview else '' }} 篇）</span>
                 </div>
-                <p class="ar-sub-hint">勾「指南」/「API 参考」后展开细分；再选细分 = 把该大类<b>收窄</b>到细分。</p>
+                <p class="ar-sub-hint">勾「指南」/「API 参考」后展开细分；再选细分 = 只看该大类里所选细分的文档。</p>
                 {% for t in areas_view.types %}
                 <div class="ar-type">
                     <label class="ar-opt{% if t.checked %} on{% endif %}">
@@ -172,28 +186,8 @@
                 {% endfor %}
             </div>
 
-            {# ── ③ 语言（与 ①② 是【且】；不选 = 全部语言）── #}
-            <div class="ar-col ar-col-lang">
-                <div class="ar-col-h">
-                    <span class="t">③ 语言</span>
-                    <span class="n">不选 = 全部</span>
-                </div>
-                <p class="ar-sub-hint">{{ lang_hint }}</p>
-                {% for l in areas_view.langs %}
-                <label class="ar-opt{% if l.checked %} on{% endif %}">
-                    <input type="checkbox" name="lang" value="{{ l.value }}"
-                           {% if l.checked %}checked{% endif %}>
-                    <span>{{ l.label }}</span>
-                    {% if l.count_fmt %}<span class="cn">{{ l.count_fmt }} 篇</span>{% endif %}
-                </label>
-                {% else %}
-                <div class="ar-empty">暂无可用取值。</div>
-                {% endfor %}
-            </div>
         </div>
-    </div>
 
-    <div class="ar-card">
         <div class="ar-actions">
             <button class="ar-btn" type="submit">💾 保存关注领域</button>
             <a class="ar-link" href="/me">取消，返回「我的」</a>
@@ -203,31 +197,30 @@
     </form>
 
     <div class="ar-card">
-        <h2>📐 当前已保存的口径预览</h2>
-        <p class="ar-hint">按收窄语义算当前<b>已保存</b>配置的命中数（改表单后需保存才更新）。</p>
+        <h2>📐 已关注领域文档范围</h2>
+        <p class="ar-hint">当前<b>已保存</b>配置命中的文档范围。</p>
         {% if not preview %}
-        <p class="ar-pv" style="margin-top:10px;">预览暂不可用（统计出错），不影响保存与回填。</p>
+        <p class="ar-pv" style="margin-top:10px;">文档范围统计暂不可用，不影响保存与回填。</p>
         {% else %}
         <p class="ar-pv" style="margin-top:10px;">
             命中 <b>{{ preview.hit.count_fmt }}</b> 篇 / 全站 {{ preview.total_docs_fmt }} 篇
             {% if preview.all_docs %}（未选任何文档范围 = 全部文档）{% endif %}
         </p>
         <div style="margin-top:8px;">
+            <span class="ar-chip plain">语言：{% if lang_summary %}{% for l in lang_summary %}{{ l.label }}{% if not loop.last %} / {% endif %}{% endfor %}{% else %}全部{% endif %}</span>
             <span class="ar-chip plain">模块：{% if scope.modules %}{% for mk in scope.modules %}{{ module_labels.get(mk, mk) }}{% if not loop.last %} / {% endif %}{% endfor %}{% else %}全部{% endif %}</span>
             {% for g in scope_summary %}
             <span class="ar-chip">{{ g.label }} → {% if g.narrowed %}{{ g.detail }}{% else %}全部{% endif %}</span>
             {% endfor %}
             {% if not scope_summary %}<span class="ar-chip plain">文档范围：全部</span>{% endif %}
-            <span class="ar-chip plain">语言：{% if lang_summary %}{% for l in lang_summary %}{{ l.label }}{% if not loop.last %} / {% endif %}{% endfor %}{% else %}全部{% endif %}</span>
         </div>
         {% if preview.groups %}
         <table class="ar-pv-tbl">
-            <thead><tr><th>大类</th><th>是否收窄</th><th>命中篇数</th><th>细分明细</th></tr></thead>
+            <thead><tr><th>大类</th><th>命中篇数</th><th>细分明细</th></tr></thead>
             <tbody>
             {% for g in preview.groups %}
             <tr>
                 <td>{{ g.label }}</td>
-                <td>{% if g.narrowed %}收窄{% else %}整个大类{% endif %}</td>
                 <td>{{ g.count_fmt }}</td>
                 <td>{% if g.subs %}{% for s in g.subs %}{{ s.axis }}: {{ s.value }} = {{ s.count_fmt }} 篇{% if not loop.last %}<br>{% endif %}{% endfor %}{% else %}—{% endif %}</td>
             </tr>

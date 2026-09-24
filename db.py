@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS user_areas (
 );
 CREATE INDEX IF NOT EXISTS idx_user_areas_user ON user_areas(user_id, dim);
 
--- 口径偏好（/me「📐 口径预览」的开关）：一用户一行，先只存不算。
+-- 口径偏好（/me「📐 已关注领域文档范围」的开关）：一用户一行，先只存不算。
 -- union        甲（并集）：命中任一已选维度的文档即算「我的」
 -- intersection 乙（交集）：需同时命中所有已选维度的文档才算「我的」
 -- 「我的问题列表」（P2b）将按这里选定的口径取数；本阶段只做预览与存储。
@@ -645,7 +645,7 @@ class IndexDB:
             "SELECT COUNT(*) FROM user_areas WHERE user_id=?",
             (user_id,)).fetchone()[0]
 
-    # ── 口径偏好（/me「口径预览」开关；一用户一行，先只存不算）─────────────
+    # ── 口径偏好（/me「文档范围预览」开关；一用户一行，先只存不算）─────────────
     AREA_LOGICS = ("union", "intersection")
 
     def get_area_logic(self, user_id: int) -> str:
