@@ -27,12 +27,9 @@ module 不是 docs 的列，无法按 doc_key 判定，不参与文档数。
   的条目——优先取「当前全量问题」（module_key=recheck）最新一次成功 run 里该模块的条目
   （recheck 把历史问题跨 run 去重后逐条复核，只写「仍存在」的）；recheck 不覆盖的模块
   （sysmerge）退回该模块最新一次成功 run 的条目（整站全量扫描，天然是「当前全量」）。
-  recheck 之后的日常 run 条目也并入（否则「上次复核之后的新增问题」整段看不见），但
-  **只并入真正的问题项**（_daily_problem_item = 模块页 / 复核页口径：ocr 的 no_cn、
-  encheck 的 clean、linkcheck 只有被拒/服务端异常/不可达的文档、中文文档中含中文的图都不算）。
+  （2026-09 起复核每日 05:30 跑，结果即最新——见 cron；不再与日常 run 合并。）
   **每模块一个页签**；列表里**没有**历史/最新之分——所有还没解决、没忽略的问题都在这一条列表里。
-  「🆕 今日」行级标记：该条目（doc_key / item_key）或它的问题目标也出现在该模块
-  **最新一次成功 run**（= 今天这次检查）里时打标。两段的旧解释已去掉（同事不容易理解两段关系）。
+  两段的旧解释已去掉（同事不容易理解两段关系）。
   写操作（忽略/已处理）后回跳保留当前页签（表单带 ft）。
   首次未设关注领域 = 不筛选（全部模块 + 全部文档）并给提示；设了才按领域过滤。
 明细列表**与各模块页一致**：列与顺序照搬该模块的 item_columns（如 ocr = 图片 / 语言 /
@@ -546,7 +543,7 @@ def _latest_success_run(db, module_key: str) -> dict | None:
 
 
 def _run_items(db, run_id: int) -> list[dict]:
-    """某次 run 的条目；同一 item_key 只保留最后一条（= 跨 run/run 内去重口径）。
+    """某次 run 的条目；同一 item_key 只保留一条（**优先带问题的那条**，见下）。
 
     每条带 ``run_id``（= 这条 item 真正所属的 run）——「全量」列表会合并**多个 run**
     的条目，忽略/已处理表单里的 ``run_id`` + ``item_id`` 必须成对，否则
@@ -560,55 +557,30 @@ def _run_items(db, run_id: int) -> list[dict]:
             detail = json.loads(dj or "{}")
         except Exception:  # noqa: BLE001
             detail = {}
-        out[key or f"#{iid}"] = {"id": iid, "run_id": run_id, "item_key": key,
-                                 "item_type": itype, "detail": detail}
+        rec = {"id": iid, "run_id": run_id, "item_key": key,
+               "item_type": itype, "detail": detail}
+        # 去重键 = **模块 + item_key**：复核一个 run 混装三模块，同一 doc 在 encheck 与
+        # linkcheck 各有一条**同名 item_key**（都用 doc_key），只按 item_key 去重会互相覆盖，
+        # 导致某个模块的条目整批丢失（/me 比 /recheck 少）。
+        mkk = detail.get("module") or ""
+        k = f"{mkk}|{key}" if key else f"{mkk}|#{iid}"
+        prev = out.get(k)
+        # 同键多条时优先保留带问题的那条（复核对同一文档既写带问题的条目、又写空壳 problem）。
+        if prev is None or (_item_has_probs(rec) and not _item_has_probs(prev)):
+            out[k] = rec
     return list(out.values())
 
 
-def _run_items_since(db, module_key: str, since_iso: str,
-                     problems_only: bool = False) -> list[dict]:
-    """复核 run **之后**该模块各次成功 run 的条目（跨 run 按 item_key 去重，保留最新一条）。
-
-    复核每周才跑一次，日常 run 是增量的；复核之后新发现/再检查的条目不在复核 run 里，
-    漏掉它们「全量」就会缺一段（用户实测：复核 #133=09-21 之后 09-22/09-23 的新增问题
-    全看不见）。这里按 ``started_at > since_iso``（严格晚于复核 run）捞日常 run，跨 run
-    同一 item_key 只留**更晚那次 run** 的那条（run.id 升序遍历 + 覆盖）。
-
-    ``problems_only=True``（全量列表用，见 _merge_recheck_items）：只保留**真正的问题项**
-    （判定 = _daily_problem_item，与模块页 / 复核页同口径）。日常 run 里大量非问题条目
-    （ocr 的 no_cn、encheck 的 clean、linkcheck 只有被拒/服务端异常/不可达的文档、
-    中文文档中含中文的图）并进来会撑大「本次检查 / 正常 / 领域外」计数、还会让「仍存在」
-    虚高，所以默认由全量列表关掉它们。
-    """
-    runs = db._conn.execute(
-        "SELECT id FROM runs WHERE module_key=? AND status='success'"
-        " AND started_at > ? ORDER BY id", (module_key, since_iso)).fetchall()
-    out: dict = {}
-    for (rid,) in runs:
-        for it in _run_items(db, rid):
-            if problems_only and not _daily_problem_item(module_key, it):
-                continue                      # 非问题条目：不并入全量
-            out[it["item_key"]] = it          # 更晚的 run 覆盖早的
-    return list(out.values())
-
-
-def _merge_recheck_items(db, rc_items: list, module_key: str,
-                         since_iso: str) -> list[dict]:
-    """全量条目 = 复核 run 的条目 ∪ 复核之后该模块日常 run 的**问题条目**（按 item_key 去重）。
-
-    复核条目优先（它们是「仍存在」的权威判定 + 带 doc_url），日常 run 里的同 key 不重复计。
-    复核 run 自身的条目**不过滤**（复核只写「仍存在」的问题项，本来就是问题）；
-    复核之后日常 run 的条目按 _daily_problem_item 过滤，只并入真正的问题项。
-    """
-    merged = list(rc_items)
-    seen = {it.get("item_key") for it in merged}
-    for it in _run_items_since(db, module_key, since_iso, problems_only=True):
-        if it.get("item_key") in seen:
-            continue
-        seen.add(it["item_key"])
-        merged.append(it)
-    return merged
-
+def _item_has_probs(rec: dict) -> bool:
+    """这条 item 是否解析出问题（同 item_key 多条时的取舍依据）。"""
+    d = rec.get("detail") or {}
+    mk = d.get("module") or ""
+    if not mk:
+        return False
+    try:
+        return bool(ignores.item_problems(mk, d, rec.get("item_type") or ""))
+    except Exception:  # noqa: BLE001 - 解析失败按「无问题」保守处理
+        return False
 
 
 def _docs_meta(db, keys) -> dict:
@@ -671,38 +643,11 @@ def _is_problem_item(mk: str, item_type: str, detail: dict, probs: list) -> bool
     """
     if probs:
         return True
+    # 复核 run 写入的条目（item_type=still/problem）一律算问题——它们是复核判定「仍存在」
+    # 的权威结论；个别新 schema 未解析出 probs 也不能当非问题丢掉（否则 /me 比 /recheck 少）。
+    if item_type in ("still", "problem"):
+        return True
     return mk in ("ocr", "encheck") and item_type == "error"
-
-
-def _daily_problem_item(mk: str, it: dict) -> bool:
-    """复核之后**日常 run** 的这条 item 是否算「问题项」（全量列表合并时据此过滤）。
-
-    「全量」= 复核 run 的条目 ∪ 复核之后各模块日常 run 的条目。日常 run 是增量的**全量扫描**，
-    里面绝大多数条目是正常的（ocr 的 no_cn、encheck 的 clean、linkcheck 只有
-    被拒/服务端异常/不可达的文档），把非问题项并进来会让「本次检查 N 条 / 正常 N 条 /
-    领域外 N 条」虚高，也会让「仍存在」虚高（中文文档的图含中文本来就是正常的）。
-
-    口径与**模块页 / 复核页一致**：
-      · ocr       —— 「英文文档 + 含中文」（has_cn，lang=en）或识别失败（item_type=error）。
-                     中文文档含中文是正常的，不算问题（与 recheck/recheck.py 收集历史问题、
-                     复核页 use「仍存在」的口径一致；模块页 OCR 默认筛选也是 lang=en + has_cn）。
-      · encheck   —— 含汉字 / 含标点 / 链接 URL 含中文 / 含中文链接（走 item_problems，clean 不算），
-                     或读取失败。
-      · linkcheck —— 界面展示的问题：断链 / 误链历史版本 / 锚点失效（走 item_problems）；
-                     只被拒 / 服务端异常 / 不可达的文档**不上界面** → 不算问题。
-      · sysmerge  —— 不走这里（全量取自身最新一次成功 run，见 issue_context）。
-    """
-    d = it.get("detail") or {}
-    itype = it.get("item_type") or ""
-    if mk == "ocr":
-        return itype == "error" or (
-            bool(d.get("image")) and d.get("lang") == "en"
-            and (itype == "has_cn" or d.get("has_cn") is True))
-    try:
-        probs = ignores.item_problems(mk, d, itype)
-    except Exception:  # noqa: BLE001 - 单条解析失败按「非问题」保守处理（不进全量列表）
-        return False
-    return _is_problem_item(mk, itype, d, probs)
 
 
 def _item_summary(mk: str, detail: dict, item_type: str, probs: list) -> tuple[str, str]:
@@ -744,36 +689,13 @@ def _item_summary(mk: str, detail: dict, item_type: str, probs: list) -> tuple[s
     return summary, extra[:160]
 
 
-def _is_today(today: dict | None, doc_key: str, item_key: str, probs: list) -> bool:
-    """该条目是否算「今天这次检查」（= 该模块**最新一次成功 run** 的条目）。
-
-    ``today`` = {"docs": {doc_key/item_key…}, "targets": {问题目标…}, "disabled": bool}；
-    判定：条目的 doc_key / item_key 命中，或它的任一问题目标命中（linkcheck 的逐条链接、
-    ocr 的图片目标等都在 targets 里）。``disabled`` 用于「全量来源就是这次 run」的
-    退化情形（见 issue_context）：整组都是最新 run 的条目时打标没有信息量，不打。
-    """
-    if not today or today.get("disabled"):
-        return False
-    docs = today.get("docs") or set()
-    if (doc_key and doc_key in docs) or (item_key and item_key in docs):
-        return True
-    tg = today.get("targets") or set()
-    if tg:
-        for p in probs or []:
-            if p.get("target") in tg:
-                return True
-    return False
-
-
 def _build_issue_group(db, mk: str, run: dict | None, raw_items: list, metas: dict,
                        scope: dict, rules: dict,
-                       handled_rules: dict, source: str = "", link: str = "",
-                       today: dict | None = None) -> dict:
+                       handled_rules: dict, source: str = "", link: str = "") -> dict:
     """把一次 run 的条目整理成一个模块分组（含三态计数 + 三条列表）。
 
     条目是否算「我的」走细分范围语义（scope）：未选任何文档范围 = 不限（全部文档）；
     命中大类但不在该大类的细分里 = 领域外（计入 n_out）。
-    ``today``：该模块最新一次成功 run 的条目索引（见 _is_today），命中的行打「🆕 今日」。
     """
     g = {"module": mk, "label": ISSUE_LABELS.get(mk, mk), "icon": ISSUE_ICONS.get(mk, ""),
          "source": source, "run_id": run["id"] if run else None,
@@ -781,7 +703,7 @@ def _build_issue_group(db, mk: str, run: dict | None, raw_items: list, metas: di
          "run_at": _fmt_time((run or {}).get("started_at")),
          "columns": item_columns(mk),      # 列 = 该模块页的 item_columns（顺序一致）
          "checked": len(raw_items), "n_total": 0, "n_open": 0, "n_ignored": 0,
-         "n_handled": 0, "n_out": 0, "n_normal": 0, "n_today": 0,
+         "n_handled": 0, "n_out": 0, "n_normal": 0,
          "open": [], "ignored": [], "handled": []}
     for it in raw_items:
         d = it["detail"] or {}
@@ -820,15 +742,9 @@ def _build_issue_group(db, mk: str, run: dict | None, raw_items: list, metas: di
             # 明细渲染：整列照搬模块页（detail = items.detail_json 原样；links = link_list 列数据）
             "detail": d, "links": _link_rows(mk, d, probs),
             "n_ign": st["n_ignored"], "n_hand": st["n_handled"],
-            # 「🆕 今日」：该条目（doc_key / item_key）或它的问题目标也出现在该模块
-            # **最新一次成功 run** 里 → 今天这次检查也查到了它
-            "today": _is_today(today, dk, it["item_key"], probs),
-            "today_at": (today or {}).get("at") or "",
         }
         g["n_total"] += 1
         g["n_" + bucket] += 1
-        if row["today"]:
-            g["n_today"] += 1
         g[bucket].append(row)
     # 不在这里截断：三个列表都完整构建（总数 / 页签数字从这里取），
     # 「按页切片」只对当前页签的分组做（见 _apply_pagination）。
@@ -836,7 +752,7 @@ def _build_issue_group(db, mk: str, run: dict | None, raw_items: list, metas: di
 
 
 def _totals(groups: list) -> dict:
-    keys = ("n_total", "n_open", "n_ignored", "n_handled", "n_out", "n_normal", "n_today")
+    keys = ("n_total", "n_open", "n_ignored", "n_handled", "n_out", "n_normal")
     return {k: sum(g[k] for g in groups) for k in keys}
 
 
@@ -1018,14 +934,11 @@ def _back_to_me() -> str:
 
 
 def issue_context(db, areas: dict, tab: str = "", pages: dict | None = None) -> dict:
-    """「📋 我的问题」单列表（当前待处理 = 全量，含「🆕 今日」行标记）+ 已处理汇总。
+    """「📋 我的问题」单列表（当前待处理 = 全量）+ 已处理汇总。
 
     单列表带一列模块页签（``tab`` 是当前选中的模块 key）：返回的 ``full`` 是**全部模块**的
     分组（页签数字从这里取），``full_active`` 才是当前页签要渲染的那一组（模板只渲染它，
     避免一次铺 4 个模块的明细表）。
-
-    「🆕 今日」：取该模块**最新一次成功 run** 的条目索引（doc_key / item_key + 问题目标），
-    单列表里命中的行打标（= 今天这次检查也查到了它）。
 
     ``pages``：页码参数 fp / fi / fh（见 page_args）——只对当前页签的分组按页切片；
     缺省全为第 1 页（脚本 / 测试可直接喂字典）。
@@ -1038,7 +951,7 @@ def issue_context(db, areas: dict, tab: str = "", pages: dict | None = None) -> 
         "issue_modules": ISSUE_MODULES, "issue_labels": ISSUE_LABELS,
         "issue_icons": ISSUE_ICONS, "issue_page_size": ISSUE_PAGE_SIZE,
         "issue_hint": ISSUE_HINT,
-        "full": [], "full_totals": {}, "today_total": 0,
+        "full": [], "full_totals": {},
         "handled_rows": [], "handled_total": 0, "recheck_run": None,
     }
     try:
@@ -1047,52 +960,26 @@ def issue_context(db, areas: dict, tab: str = "", pages: dict | None = None) -> 
     except Exception:  # noqa: BLE001 - 取不到忽略/已处理时按「没有」处理（页面照常出）
         rules, handled_rules = {}, {}
 
-    # 各模块**最新一次成功 run**（= 「今天这次检查」）→ 单列表的「🆕 今日」标记索引
-    today_runs: dict = {}
-    for mk in ISSUE_MODULES:
-        if mods and mk not in mods:
-            continue
-        run = _latest_success_run(db, mk)
-        today_runs[mk] = (run, _run_items(db, run["id"]) if run else [])
-    today_sets: dict = {}
-    for mk, (run, items) in today_runs.items():
-        docs: set = set()
-        targets: set = set()
-        for it in items:
-            d = it["detail"] or {}
-            docs.add(d.get("doc_key") or it["item_key"] or "")
-            try:
-                for p in ignores.item_problems(mk, d, it["item_type"]):
-                    targets.add(p["target"])
-            except Exception:  # noqa: BLE001 - 单条解析失败不影响整页
-                pass
-        today_sets[mk] = {"docs": docs, "targets": targets,
-                          "run_id": (run or {}).get("id"),
-                          "at": _fmt_time((run or {}).get("started_at"))}
-
-    # 单列表（全量）：recheck 最新一次成功 run（跨 run 去重后仍存在）+ sysmerge 自身最新 run
+    # 单列表（全量）：recheck 最新一次成功 run（每日 05:30）+ sysmerge 自身最新 run
     rc = _latest_success_run(db, "recheck")
     out["recheck_run"] = {"id": rc["id"], "run_at": _fmt_time(rc["started_at"])} if rc else None
+    # 复核一次跑三模块、条目混在同一个 run 里 → 先按 detail.module 分桶，各组只取本模块的。
     rc_by_mod: dict = {}
     if rc:
         for it in _run_items(db, rc["id"]):
-            mk = (it["detail"] or {}).get("module") or ""
-            if mk:
-                rc_by_mod.setdefault(mk, []).append(it)
+            rmk = (it["detail"] or {}).get("module") or ""
+            if rmk:
+                rc_by_mod.setdefault(rmk, []).append(it)
     full_runs: dict = {}
     for mk in ISSUE_MODULES:
         if mods and mk not in mods:
             continue
         if mk in RECHECK_MODULES:
-            # 全量 = 复核 run 的条目 ∪ **复核之后**该模块日常 run 的条目（按 item_key 去重）。
-            # 复核每周才跑一次（周日 22:00），只取复核 run 会让「上次复核之后、今天之前」
-            # 的日常新增问题整段消失（用户实测的 bug）。
-            # 日常 run 的条目只并入**真正的问题项**（_daily_problem_item = 模块页/复核页口径）；
-            # no_cn / clean / 只有被拒·服务端异常·不可达的文档 / 中文图含中文都不并入。
-            rc_items = _merge_recheck_items(db, rc_by_mod.get(mk, []) if rc else [],
-                                            mk, rc["started_at"]) if rc else []
-            src = (f"🗓️ 当前全量问题 #{rc['id']}（跨 run 去重后仍存在）" if rc else "")
-            full_runs[mk] = (rc, rc_items, src)
+            # 全量 = 复核 run 里**本模块**的条目（复核 2026-09 起每日 05:30 跑，结果即最新；
+            # 不再与日常 run 合并——见 cron）。
+            items = rc_by_mod.get(mk, []) if rc else []
+            src = (f"🗓️ 当前全量问题 #{rc['id']}" if rc else "")
+            full_runs[mk] = (rc, items, src)
         else:
             run = _latest_success_run(db, mk)
             full_runs[mk] = (run, _run_items(db, run["id"]) if run else [],
@@ -1110,22 +997,10 @@ def issue_context(db, areas: dict, tab: str = "", pages: dict | None = None) -> 
         return (f"/recheck/run/{run['id']}?tab={mk}" if mk in RECHECK_MODULES
                 else f"/{mk}/run/{run['id']}")
 
-    def _today_of(mk: str, run) -> dict | None:
-        """该模块的「今日」索引；**全量来源就是这个 run**（sysmerge）时整组都是这次
-        检查的条目，打标没有信息量 → 返回 disabled（不打标）。"""
-        t = today_sets.get(mk)
-        if not t:
-            return None
-        if run and t.get("run_id") == run["id"]:
-            return {"disabled": True}
-        return t
-
     out["full"] = [_build_issue_group(db, mk, run, items, metas, scope, rules, handled_rules,
-                                      source=src, link=_full_link(mk, run),
-                                      today=_today_of(mk, run))
+                                      source=src, link=_full_link(mk, run))
                    for mk, (run, items, src) in full_runs.items()]
     out["full_totals"] = _totals(out["full"])
-    out["today_total"] = out["full_totals"].get("n_today", 0)
 
     # 模块页签 + 当前选中的分组（tab 来自 ?ft=；旧 ?dt= 由路由折算）
     out["full_active"] = _pick_group(out["full"], (tab or "").strip())
@@ -1270,7 +1145,7 @@ def _empty_context() -> dict:
             "has_areas": False, "issue_modules": ISSUE_MODULES,
             "issue_labels": ISSUE_LABELS, "issue_icons": ISSUE_ICONS,
             "issue_page_size": ISSUE_PAGE_SIZE, "issue_hint": ISSUE_HINT,
-            "full": [], "full_totals": {}, "today_total": 0,
+            "full": [], "full_totals": {},
             "full_tabs": [], "full_active": None, "full_tab": "",
             "handled_rows": [], "handled_total": 0, "recheck_run": None}
     # 分页参数（模板里表单隐藏字段 / 分页控件用；未登录时全为第 1 页）

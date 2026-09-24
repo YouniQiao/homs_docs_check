@@ -3,8 +3,7 @@
 <style>
     /* ── 布局（P2d）：a. 登录信息 / b. 关注领域小条 / c. 一条主列表（当前待处理 = 全量）
        宽度不设 max-width —— 直接吃 base 的 .container（与各模块页一致）。
-       2026-09 B 方案：原「① 每日增量 / ② 全量问题」两张卡片合并成一条主列表，
-       今天这次检查也查到的行打「🆕 今日」标记。 */
+       2026-09 B 方案：原「① 每日增量 / ② 全量问题」两张卡片合并成一条主列表。 */
     .me-wrap { margin: 4px auto 0; }
     .me-card { background: var(--card); border: 1px solid var(--border);
                border-radius: var(--radius); box-shadow: var(--shadow);
@@ -93,10 +92,6 @@
     .me-toast.show { opacity: 1; }
     .mi-type { width: 168px; }
     .mi-type .badge { margin-bottom: 4px; }
-    /* 行级「🆕 今日」：该模块**最新一次成功检查**也查到了它（= 今天的增量） */
-    .mi-today { display: inline-block; margin-top: 3px; font-size: 11px; font-weight: 600;
-                color: #0f7b4f; background: #e5f6ec; border-radius: 999px;
-                padding: 1px 8px; white-space: nowrap; }
     .mi-title { font-size: 13px; font-weight: 600; line-height: 1.55; min-width: 170px; }
     .mi-title a { color: var(--primary); display: inline-block; max-width: 100%;
                   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
@@ -371,8 +366,7 @@
     {% endmacro %}
 
     {# 明细表格：状态 / 各模块 item_columns（顺序一致）/ 操作；图片列渲染缩略图可放大
-       行上带 data-seg/mod/key/state/targets：忽略/已处理后前端据此同步同目标的行；
-       「🆕 今日」= 该条目也在该模块最新一次成功 run 里（今天这次检查也查到了） #}
+       行上带 data-seg/mod/key/state/targets：忽略/已处理后前端据此同步同目标的行 #}
     {% macro me_rows(rows, g, seg, ft_key) %}
     <table class="mi-rows">
         <thead>
@@ -390,7 +384,6 @@
             <td class="mi-type">
                 {# 只标识状态（不再列具体问题类型）：未处理 = 「待处理」，其余按状态标注 #}
                 <span class="js-state badge {% if it.status == 'ignored' %}badge-info{% elif it.status == 'handled' %}badge-added{% else %}badge-failed{% endif %}">{{ '已忽略' if it.status == 'ignored' else ('已处理' if it.status == 'handled' else '待处理') }}</span>
-                {% if it.today %}<br><span class="mi-today" title="该模块最新一次检查（{{ it.today_at or g.run_at or '—' }}）也查到了它，属于今天的增量">🆕 今日</span>{% endif %}
             </td>
             {% for f, label, render in g.columns %}
             <td>
@@ -525,15 +518,13 @@
     {% endif %}
 
     {# ══ 主列表：当前待处理（全量）——原「① 每日增量 / ② 全量问题」两段已合并 ══
-       （2026-09 B 方案：同事不容易理解两段关系；今天新查出的行打「🆕 今日」标） #}
+       （2026-09 B 方案：同事不容易理解两段关系） #}
     <div class="me-card" id="me-full" data-seg="full">
         <h2>📋 当前待处理（全量）
             <span class="me-badge" data-cnt-total="n_open">仍存在 {{ "{:,}".format(full_totals.get('n_open', 0)) }} 条</span>
-            {% if today_total %}<span class="me-badge" data-cnt-total="n_today">🆕 今日 {{ "{:,}".format(today_total) }} 条</span>{% endif %}
         </h2>
-        <p class="me-hint">当前所有<b>还没解决 / 没忽略</b>的问题（含历史）；<b>今天这次检查也查到的</b>在行上打
-            <span class="mi-today">🆕 今日</span> 标。图片 OCR / 英文文档 / 链接健康取
-            {% if recheck_run %}<b>{{ recheck_run.run_at }}</b> 的跨 run 去重复核结果{% else %}「当前全量问题」复核结果{% endif %}，
+        <p class="me-hint">当前所有<b>还没解决 / 没忽略</b>的问题（含历史）。图片 OCR / 英文文档 / 链接健康取
+            {% if recheck_run %}<b>{{ recheck_run.run_at }}</b> 的复核结果{% else %}「当前全量问题」复核结果{% endif %}，
             系统合并整改取整站扫描；每模块一个页签，页签数字 = 仍存在。</p>
         {% if full_active %}
         {{ me_tabs(full_tabs, full_tab, 'full') }}
@@ -588,7 +579,6 @@
             · <b>仍存在</b> = 最新一次检查里还有、且没被忽略 / 处理掉的条目；忽略与「已处理」都<b>全局生效</b>（谁先点谁生效），
             只做展示端过滤——run / items 原始数据不动，<b>恢复即时生效</b>，不必重跑检查。<br>
             · 列表是<b>一条</b>：所有还没解决 / 没忽略的问题（含历史）都在这一条里，不区分「今天 / 历史」两段；
-            行上的 <span class="mi-today">🆕 今日</span> 表示<b>该模块最新一次检查（今天这次）也查到了它</b>。<br>
             · 过滤按<b>关注领域</b>：语言 ⟷ 模块 ⟷ 文档范围是【且】；大类之间是【或】；大类里选了细分就只看该细分下的文档
             （例：指南 + ArkUI = 只看 ArkUI 的指南）；行内「领域外 N 条」= 命中大类但落在细分之外的条目。<br>
             · 明细列与顺序和各模块页一致（OCR 段不列「置信度」），图片列可点击放大；
