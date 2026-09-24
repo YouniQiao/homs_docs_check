@@ -1,25 +1,28 @@
-"""「我的」→ 关注领域配置（P2a 阶段）。
+"""「我的」→ 关注领域（P2c：两级结构 + 独立配置页 + 收窄语义）。
 
-口径（用户 2026-09 拍板）：关注领域**只允许 4 个维度**
-  catalog  文档类型 —— 固定 5 个取值
-  kit      Kit      —— 从 docs 表 DISTINCT kit（按文档数倒序）
-  ide      IDE 分组 —— 从 docs 表 DISTINCT ide（按文档数倒序）
-  module   检查模块 —— 本站固定 4 个：ocr / encheck / linkcheck / sysmerge
+口径（用户 2026-09 拍板，替代 P2a 的 4 维平铺 + 并集/交集两种口径）：
+  ① 关注的模块（module）—— 本站 4 个：ocr / encheck / linkcheck / sysmerge；不选 = 全部
+  ② 关注的文档范围 —— 大类（type = docs.catalog 的 5 个取值）+ 大类内细分：
+       指南（harmonyos-guides）      → 细分 Kit（kit@guides）/ IDE 分组（ide@guides）
+       API 参考（harmonyos-references）→ 细分 Kit（kit@references）
+       FAQ / 版本说明 / 最佳实践      → 无细分
+  关系：① ⟷ ② = 且；② 大类之间 = 或；大类内细分 = 或；大类 + 细分 = 收窄
+        （勾「指南」再勾「ArkUI」→ 只看 ArkUI 的指南，不是「全部指南 ∪ ArkUI 的参考」）。
 
-已选值落在 index.db 的 user_areas 表（按用户，UNIQUE(user_id, dim, value)）；
-POST /me/areas 增删，保存即生效，无前端框架（每个标签/下拉一个原生 form）。
+已选值落在 index.db 的 user_areas 表（按用户，UNIQUE(user_id,dim,value)），dim 用
+module / type / kit@guides / kit@references / ide@guides；保存 = 整体替换（先清后插，一个事务）。
+P2a 的旧 dim（catalog / kit / ide）读时按下表折算，用户在新页面保存一次即迁移：
+  catalog → type；kit → kit@guides + kit@references；ide → ide@guides。
 
-口径预览（本期新增）：「关注领域」下方并列展示两种统计口径的命中文档数——
-  甲 union        并集：命中任一已选维度（OR）
-  乙 intersection 交集：同时命中所有已选维度（AND，只对已选维度取交集）
-口径开关存 user_prefs(user_id PK, area_logic, updated_at)，只存不算；本阶段**只做预览**，
-「我的问题列表」在 P2b。module 不是 docs 的列，无法按 doc_key 判定，不参与文档数。
+口径预览：按上面的收窄语义算命中文档数（scope_where 的 SQL 与 doc_hit 的判定同源），
+不再有并集/交集开关（POST /me/logic 保留但已废弃，只存不影响取数）。
+module 不是 docs 的列，无法按 doc_key 判定，不参与文档数。
 
 注意：忽略与「已处理」都是**全局**的，不按用户区分（用户 2026-09 拍板）。
 
 「我的问题」（P2b，本文件）——两段：
   ① 每日增量：各模块**最新一次成功 run** 的条目（日常 run 是增量的），落在关注领域
-     （并集口径）内的「问题条目」，按模块分组、可折叠；每条给「忽略 / 已处理」两个操作。
+     （**收窄语义**）内的「问题条目」，按模块分组、可折叠；每条给「忽略 / 已处理」两个操作。
   ② 全量：**跨 run 按 item_key 去重后仍存在**的条目——优先取「当前全量问题」
      （module_key=recheck）最新一次成功 run 里该模块的条目（recheck 把历史问题跨 run
      去重后逐条复核，只写「仍存在」的）；recheck 不覆盖的模块（sysmerge）退回该模块
@@ -28,8 +31,9 @@ POST /me/areas 增删，保存即生效，无前端框架（每个标签/下拉�
 被忽略或被处理完的条目不计入「仍存在」，并单列计数 + 可展开列表（可恢复/撤销）。
 
 路由：
-  POST /me/areas   action=add|remove  + dim + value → 302 回 /me（flash 提示）
-  POST /me/logic   logic=union|intersection        → 302 回 /me（口径开关，只存不算）
+  GET  /me/areas   关注领域配置页（两级：模块 + 文档范围；JS 按大类展开细分）
+  POST /me/areas   整体保存（module / type / kit@* / ide@* 五类 dim）→ 302 回 /me/areas
+  POST /me/logic   已废弃的口径开关（只存不影响取数）→ 302 回 /me
   POST /me/issue   run_id + item_id + act=ignore|unignore|handle|unhandle → 302 回 /me
 """
 
@@ -39,7 +43,7 @@ import json
 import sys
 from pathlib import Path
 
-from flask import Blueprint, flash, redirect, request
+from flask import Blueprint, flash, redirect, render_template, request
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
@@ -50,28 +54,51 @@ from db import IndexDB  # noqa: E402
 
 DB_PATH = str(BASE_DIR / "index.db")
 
-# 4 个维度（顺序即页面展示顺序）
-DIMS = ("catalog", "kit", "ide", "module")
-DIM_LABELS = {
-    "catalog": "文档类型",
-    "kit": "Kit",
-    "ide": "IDE 分组",
-    "module": "检查模块",
-}
-DIM_HINTS = {
-    "catalog": "按文档类型关注（指南 / API 参考 / FAQ / 版本说明 / 最佳实践）",
-    "kit": "按 Kit 关注（如 ArkUI、Ability Kit）；kit 只覆盖 harmonyos-guides 与 harmonyos-references",
-    "ide": "按 IDE 分组关注（如「编写与调试应用」「开发环境搭建」）",
-    "module": "按检查模块关注：图片 OCR / 英文文档 / 链接健康 / 系统词合并",
-}
+# ── 两级关注领域（用户 2026-09 拍板重构）────────────────────────────────
+# ① 关注的模块（module）：本站 4 个检查模块；不选 = 全部模块
+# ② 关注的文档范围：大类（type，取 docs.catalog 的 5 个值）+ 大类内细分
+#      type=harmonyos-guides     可细分 kit@guides / ide@guides
+#      type=harmonyos-references 可细分 kit@references
+#      FAQ / 版本说明 / 最佳实践   无细分
+# 关系：① ⟷ ② = 且；② 大类之间 = 或；大类内细分 = 或；大类 + 细分 = 收窄
+#   （勾「指南」再勾「ArkUI」→ 只看 ArkUI 的指南，而不是「全部指南 ∪ ArkUI 的参考」）。
+# 存储：沿用 user_areas 表，dim 用 module / type / kit@guides / kit@references / ide@guides。
+# P2a 的旧 4 维（catalog / kit / ide）仍可读，按下面这张表折算进新结构
+# （用户在新页面保存一次即迁移为上面的 5 个 dim）：
+#   catalog → type；kit → kit@guides + kit@references；ide → ide@guides
+MODULE_DIM = "module"
+TYPE_DIM = "type"
+KIT_GUIDES_DIM = "kit@guides"
+KIT_REFS_DIM = "kit@references"
+IDE_GUIDES_DIM = "ide@guides"
 
-# catalog 固定 5 值（与 docs.catalog 的实际取值一致）
-CATALOG_LABELS = {
-    "harmonyos-guides": "指南（harmonyos-guides）",
-    "harmonyos-references": "API 参考（harmonyos-references）",
-    "harmonyos-faqs": "FAQ（harmonyos-faqs）",
-    "harmonyos-releases": "版本说明（harmonyos-releases）",
-    "best-practices": "最佳实践（best-practices）",
+NEW_DIMS = (MODULE_DIM, TYPE_DIM, KIT_GUIDES_DIM, KIT_REFS_DIM, IDE_GUIDES_DIM)
+LEGACY_DIMS = ("catalog", "kit", "ide")
+ALL_AREA_DIMS = NEW_DIMS + LEGACY_DIMS
+
+# 大类（= docs.catalog 的实际取值）与显示名
+TYPE_LABELS = {
+    "harmonyos-guides": "指南",
+    "harmonyos-references": "API 参考",
+    "harmonyos-faqs": "FAQ",
+    "harmonyos-releases": "版本说明",
+    "best-practices": "最佳实践",
+}
+TYPE_CATALOGS = tuple(TYPE_LABELS)
+TYPE_FULL_LABELS = {k: f"{v}（{k}）" for k, v in TYPE_LABELS.items()}
+
+# 大类 → 细分轴：(dim, 轴标签, docs 列)；只有这两个大类可细分
+SUBDIV_DEFS = {
+    "harmonyos-guides": ((KIT_GUIDES_DIM, "Kit", "kit"),
+                         (IDE_GUIDES_DIM, "IDE 分组", "ide")),
+    "harmonyos-references": ((KIT_REFS_DIM, "Kit", "kit"),),
+}
+SUBDIV_PARENT = {d: t for t, defs in SUBDIV_DEFS.items() for d, _l, _c in defs}
+SUBDIV_AXIS_LABEL = {d: lbl for defs in SUBDIV_DEFS.values() for d, lbl, _c in defs}
+SUBDIV_HINTS = {
+    KIT_GUIDES_DIM: "指南的 Kit 细分（harmonyos-guides 的 Kit 取值，按文档数倒序）",
+    IDE_GUIDES_DIM: "指南的 IDE 分组细分（harmonyos-guides 的 IDE 取值）",
+    KIT_REFS_DIM: "API 参考的 Kit 细分（harmonyos-references 的 Kit 取值）",
 }
 
 # module 建议取值（本站 4 个检查模块）
@@ -82,47 +109,54 @@ MODULE_LABELS = {
     "sysmerge": "系统词合并检查（sysmerge）",
 }
 
-MAX_VALUE_LEN = 120
-
-# ── 口径预览（两种理解并列展示；本阶段只预览 + 存开关，不做问题列表）──────
-# 只有 catalog / kit / ide 是 docs 表的列，能按 doc_key 判定命中；
-# module（检查模块）不是文档属性，无法落到 doc_key 上，故不参与两组数字。
-DOC_DIMS = ("catalog", "kit", "ide")
-AREA_LOGICS = ("union", "intersection")
-LOGIC_LABELS = {"union": "甲 · 并集", "intersection": "乙 · 交集"}
-LOGIC_SHORT = {"union": "并集", "intersection": "交集"}
-LOGIC_DESC = (
-    "两种口径的差别：甲（并集）把「命中任一已选维度」的文档都算成你的，范围宽；"
-    "乙（交集）只算「同时命中所有已选维度」的文档，范围窄——Kit 与 IDE 分组几乎不重叠，"
-    "所以乙常常是空集。未选的维度不参与口径（否则交集恒为空）。"
-    "检查模块不是文档属性（无法按 doc_key 判定），不参与这里的文档数。"
+# 两级结构的关系说明（页面文案统一从这里取，避免多处口径漂移）
+SCOPE_RULE = (
+    "「关注的模块」与「关注的文档范围」之间是【且】；文档范围里各大类之间是【或】；"
+    "大类内部的细分之间也是【或】；大类与它的细分之间是【收窄】——"
+    "勾了「指南」再勾「ArkUI」，范围收窄为 ArkUI 的指南（不是全部指南 + ArkUI 的参考）。"
+    "不选模块 = 全部模块；不选文档范围 = 全部文档。"
 )
+
+MAX_VALUE_LEN = 120
 _MAX_SAMPLE = 3
 
 me_bp = Blueprint("me_pages", __name__)
 
 
 # ── 选项/已选（供 /me 页面渲染）────────────────────────────────────────
-def _docs_counts(db, col: str) -> list[tuple[str, int]]:
-    """docs 表某列的非空取值 → [(value, 文档数)]，按文档数倒序（列名白名单，防注入）。"""
+def _docs_counts(db, col: str, catalog: str = "") -> list[tuple[str, int]]:
+    """docs 表某列的非空取值 → [(value, 文档数)]，按文档数倒序（列名白名单，防注入）。
+
+    catalog 非空时只统计该大类下的文档：细分区（Kit / IDE）必须按父大类取，
+    否则「API 参考」的 Kit 列表里会混进只在指南里出现的 Kit。
+    """
     if col not in ("catalog", "kit", "ide"):
         return []
     sql = (f"SELECT {col} AS v, COUNT(*) AS c FROM docs"
-           f" WHERE {col} IS NOT NULL AND {col}<>''"
-           f" GROUP BY {col} ORDER BY c DESC, v ASC")
-    return [(r[0], int(r[1])) for r in db._conn.execute(sql)]
+           f" WHERE {col} IS NOT NULL AND {col}<>''")
+    params: list = []
+    if catalog:
+        sql += " AND catalog=?"
+        params.append(catalog)
+    sql += f" GROUP BY {col} ORDER BY c DESC, v ASC"
+    return [(r[0], int(r[1])) for r in db._conn.execute(sql, params)]
 
 
 def area_options(db) -> dict:
-    """{dim: [(value, label, count)]}；kit/ide 按文档数倒序，catalog/module 固定顺序。"""
+    """{dim: [(value, label, count)]}（新的 5 个 dim）。
+
+    type（大类）固定 5 项按 docs.catalog 实际取值；细分 dim 从 docs 表 DISTINCT 取、
+    按文档数倒序；module 固定 4 项。
+    """
     catalog_counts = dict(_docs_counts(db, "catalog"))
     out: dict = {
-        "catalog": [(v, CATALOG_LABELS[v], catalog_counts.get(v, 0))
-                    for v in CATALOG_LABELS],
-        "kit": [(v, v, c) for v, c in _docs_counts(db, "kit")],
-        "ide": [(v, v, c) for v, c in _docs_counts(db, "ide")],
-        "module": [(v, MODULE_LABELS[v], 0) for v in MODULE_LABELS],
+        MODULE_DIM: [(v, MODULE_LABELS[v], 0) for v in MODULE_LABELS],
+        TYPE_DIM: [(v, TYPE_LABELS[v], catalog_counts.get(v, 0))
+                   for v in TYPE_CATALOGS],
     }
+    for parent, defs in SUBDIV_DEFS.items():
+        for dim, _axis, col in defs:
+            out[dim] = [(v, v, c) for v, c in _docs_counts(db, col, parent)]
     return out
 
 
@@ -131,75 +165,180 @@ def _label_map(options: dict) -> dict:
 
 
 def selected_areas(db, user_id: int) -> dict:
-    """{dim: [value, ...]}（含已不在当前选项里的历史值，保证标签可删）。"""
-    out: dict = {d: [] for d in DIMS}
+    """{dim: [value, ...]} 原样读库（含 P2a 旧 dim，便于页面区分「旧配置」）。"""
+    out: dict = {d: [] for d in ALL_AREA_DIMS}
     for r in db.list_user_areas(user_id):
         out.setdefault(r["dim"], []).append(r["value"])
     return out
 
 
-# ── 口径预览：按已选关注领域算两种口径命中的文档（只读 docs 表，不写数据）──
-def _sel_doc_dims(areas: dict) -> list[tuple[str, list[str]]]:
-    """[(dim, [value, ...])]，只保留有值的文档维度（catalog / kit / ide）。"""
-    out: list[tuple[str, list[str]]] = []
-    for dim in DOC_DIMS:
-        vals = [v for v in ((areas or {}).get(dim) or []) if v]
-        if vals:
-            out.append((dim, vals))
-    return out
+def areas_effective(areas: dict) -> dict:
+    """存储里的关注领域（含 P2a 旧 4 维）→ 归一化到新 5 个 dim 的取值集合。
 
-
-def doc_logic_preview(db, areas: dict, sample_n: int = _MAX_SAMPLE) -> dict:
-    """两种口径的预览数据：文档数 + 各 2-3 个示例文档。
-
-    甲 union        = 命中任一已选维度（OR）——「范围宽」
-    乙 intersection = 同时命中所有已选维度（AND；只对**已选**维度取交集，
-                      未选维度不参与，否则交集恒为空）
-    未选任何文档维度时按「默认全部」展示全站文档数（甲=乙=全部）。
-    说明：module 不是 docs 的列，无法按 doc_key 判定，故不计入文档数。
+    旧值折算：catalog → type；kit → kit@guides + kit@references；ide → ide@guides。
+    细分值只在其父大类在范围内时保留；若只选了细分、一个大类都没选（旧数据可能出现），
+    则把细分所属的大类补进来（否则这些细分会静默失效）。
     """
-    sel = _sel_doc_dims(areas)
-    total = int(db._conn.execute("SELECT COUNT(*) FROM docs").fetchone()[0])
-    out: dict = {
-        "has_doc_dims": bool(sel),
-        "selected": {dim: vals for dim, vals in sel},
-        "modules": [v for v in ((areas or {}).get("module") or []) if v],
-        "total_docs": total,
-        "total_docs_fmt": f"{total:,}",
-        "union": {"count": 0, "count_fmt": "0", "samples": []},
-        "intersection": {"count": 0, "count_fmt": "0", "samples": []},
-        "empty_intersection": False,
-    }
-    if not sel:
-        # 未设关注领域 → 默认全部（两种口径一致，示例取全站前几篇）
-        rows = db._conn.execute(
-            "SELECT doc_key, title, catalog, kit, ide FROM docs"
-            " ORDER BY catalog, kit, title LIMIT ?", (sample_n,)).fetchall()
-        samples = [{"doc_key": r[0], "title": r[1] or r[0], "catalog": r[2],
-                    "kit": r[3] or "", "ide": r[4] or ""} for r in rows]
-        for k in ("union", "intersection"):
-            out[k]["count"] = total
-            out[k]["count_fmt"] = out["total_docs_fmt"]
-            out[k]["samples"] = samples
+    raw: dict = {d: [] for d in ALL_AREA_DIMS}
+    for dim, vals in (areas or {}).items():
+        if dim not in raw:
+            continue
+        for v in vals or []:
+            if v and v not in raw[dim]:
+                raw[dim].append(v)
+
+    def _merge(*seqs) -> list:
+        out: list = []
+        for s in seqs:
+            for v in s or []:
+                if v and v not in out:
+                    out.append(v)
         return out
 
-    for logic, op in (("union", " OR "), ("intersection", " AND ")):
-        where = op.join(
-            f"({dim} IN ({','.join('?' * len(vals))}))" for dim, vals in sel)
-        params: list = [v for _dim, vals in sel for v in vals]
-        n = int(db._conn.execute(
-            f"SELECT COUNT(*) FROM docs WHERE {where}", params).fetchone()[0])
-        rows = db._conn.execute(
-            f"SELECT doc_key, title, catalog, kit, ide FROM docs WHERE {where}"
-            f" ORDER BY catalog, kit, title LIMIT ?", params + [sample_n]).fetchall()
-        out[logic] = {
-            "count": n,
-            "count_fmt": f"{n:,}",
-            "samples": [{"doc_key": r[0], "title": r[1] or r[0], "catalog": r[2],
-                         "kit": r[3] or "", "ide": r[4] or ""} for r in rows],
-        }
-    out["empty_intersection"] = out["intersection"]["count"] == 0
+    types = _merge(raw[TYPE_DIM], raw["catalog"])
+    subs = {
+        KIT_GUIDES_DIM: _merge(raw[KIT_GUIDES_DIM], raw["kit"]),
+        IDE_GUIDES_DIM: _merge(raw[IDE_GUIDES_DIM], raw["ide"]),
+        KIT_REFS_DIM: _merge(raw[KIT_REFS_DIM], raw["kit"]),
+    }
+    if not types:  # 只选了细分（旧数据）→ 补上细分所属的大类
+        types = [t for t in TYPE_CATALOGS
+                 if any(subs[d] for d in subs if SUBDIV_PARENT[d] == t)]
+    out: dict = {d: [] for d in NEW_DIMS}
+    out[MODULE_DIM] = list(raw[MODULE_DIM])
+    out[TYPE_DIM] = [t for t in TYPE_CATALOGS if t in types]
+    for dim, vals in subs.items():
+        out[dim] = list(vals) if SUBDIV_PARENT[dim] in out[TYPE_DIM] else []
     return out
+
+
+def areas_scope(areas: dict) -> dict:
+    """归一化关注领域 → **收窄后**的文档范围。
+
+    {"modules": [...],
+     "groups": [{"catalog","label","narrowed","kits","ides","subs"}...],
+     "empty": bool}
+    groups 之间是「或」；组内 kits / ides 之间是「或」；有细分时该组 = 大类 ∩ (kits ∪ ides)。
+    empty=True 表示没选任何文档范围 = 全部文档。
+    """
+    eff = areas_effective(areas)
+    groups: list = []
+    for t in eff[TYPE_DIM]:
+        kits: list = []
+        ides: list = []
+        subs: list = []
+        for dim, axis, col in SUBDIV_DEFS.get(t, ()):
+            vals = eff.get(dim) or []
+            if col == "kit":
+                kits = vals
+            else:
+                ides = vals
+            for v in vals:
+                subs.append({"dim": dim, "axis": axis, "value": v})
+        groups.append({"catalog": t, "label": TYPE_LABELS.get(t, t),
+                       "narrowed": bool(kits or ides), "kits": kits, "ides": ides,
+                       "subs": subs})
+    return {"modules": list(eff[MODULE_DIM]), "groups": groups,
+            "empty": not groups, "effective": eff}
+
+
+def scope_where(scope: dict) -> tuple[str, list]:
+    """收窄范围 → (SQL WHERE 片段, 参数)；片段为空串 = 不限文档（全部文档）。"""
+    groups = (scope or {}).get("groups") or []
+    if not groups:
+        return "", []
+    clauses: list = []
+    params: list = []
+    for g in groups:
+        parts: list = []
+        p: list = []
+        if g["kits"]:
+            parts.append("kit IN (%s)" % ",".join("?" * len(g["kits"])))
+            p += list(g["kits"])
+        if g["ides"]:
+            parts.append("ide IN (%s)" % ",".join("?" * len(g["ides"])))
+            p += list(g["ides"])
+        if parts:  # 大类 + 细分 = 收窄
+            clauses.append("(catalog=? AND (%s))" % " OR ".join(parts))
+            params.append(g["catalog"])
+            params += p
+        else:      # 只选大类 = 该类全部文档
+            clauses.append("catalog=?")
+            params.append(g["catalog"])
+    return "(" + " OR ".join(clauses) + ")", params
+
+
+def doc_hit(scope: dict, meta: dict, detail: dict | None = None) -> bool:
+    """某文档 / 问题条目是否落在收窄范围内（与 scope_where 同一套判定，两处必须一致）。
+
+    meta 优先（docs 表的 catalog/kit/ide），取不到时回落条目 detail。
+    """
+    groups = (scope or {}).get("groups") or []
+    if not groups:
+        return True
+    meta = meta or {}
+    detail = detail or {}
+    cat = meta.get("catalog") or detail.get("catalog") or ""
+    for g in groups:
+        if cat != g["catalog"]:
+            continue
+        if not g["narrowed"]:
+            return True
+        kit = meta.get("kit") or ""
+        ide = meta.get("ide") or ""
+        return bool((g["kits"] and kit in g["kits"]) or (g["ides"] and ide in g["ides"]))
+    return False
+
+
+# ── 口径预览：按收窄语义算命中文档（只读 docs 表，不写数据）──────────────
+def scope_preview(db, scope: dict, sample_n: int = _MAX_SAMPLE) -> dict:
+    """收窄口径的预览数据：命中文档数 + 每个大类明细 + 2-3 个示例文档。
+
+    与 scope_where 用同一段 SQL 条件，保证「预览数字」与「我的问题」实际过滤一致。
+    module 不是 docs 的列，无法按 doc_key 判定，不参与文档数。
+    """
+    total = int(db._conn.execute("SELECT COUNT(*) FROM docs").fetchone()[0])
+    where, params = scope_where(scope)
+    hit = int(db._conn.execute(
+        "SELECT COUNT(*) FROM docs" + (f" WHERE {where}" if where else ""),
+        params).fetchone()[0])
+    rows = db._conn.execute(
+        "SELECT doc_key, title, catalog, kit, ide FROM docs"
+        + (f" WHERE {where}" if where else "")
+        + " ORDER BY catalog, kit, title LIMIT ?", params + [sample_n]).fetchall()
+
+    groups: list = []
+    for g in (scope or {}).get("groups") or []:
+        gw, gp = scope_where({"groups": [g]})
+        n = int(db._conn.execute(
+            f"SELECT COUNT(*) FROM docs WHERE {gw}", gp).fetchone()[0])
+        subs: list = []
+        for dim, axis, col in SUBDIV_DEFS.get(g["catalog"], ()):
+            vals = g["kits"] if col == "kit" else g["ides"]
+            for v in vals:
+                c = int(db._conn.execute(
+                    f"SELECT COUNT(*) FROM docs WHERE catalog=? AND {col}=?",
+                    (g["catalog"], v)).fetchone()[0])
+                subs.append({"axis": axis, "value": v, "count": c,
+                             "count_fmt": f"{c:,}"})
+        groups.append({
+            "catalog": g["catalog"], "label": g["label"],
+            "narrowed": g["narrowed"], "subs": subs,
+            "kits": g["kits"], "ides": g["ides"],
+            "count": n, "count_fmt": f"{n:,}",
+        })
+
+    return {
+        "has_scope": bool(groups),
+        "modules": list((scope or {}).get("modules") or []),
+        "total_docs": total, "total_docs_fmt": f"{total:,}",
+        "hit": {"count": hit, "count_fmt": f"{hit:,}",
+                "samples": [{"doc_key": r[0], "title": r[1] or r[0], "catalog": r[2],
+                             "kit": r[3] or "", "ide": r[4] or ""} for r in rows]},
+        "groups": groups,
+        "all_docs": not groups,
+    }
+
 
 
 # ── 我的问题（P2b）──────────────────────────────────────────────────────
@@ -277,26 +416,19 @@ def _docs_meta(db, keys) -> dict:
     return out
 
 
-def _area_selection(areas: dict) -> tuple[list, list, list, list]:
-    """已选关注领域 → (catalog, kit, ide, module) 四组取值（去掉空值）。"""
-    def g(dim: str) -> list:
-        return [v for v in ((areas or {}).get(dim) or []) if v]
+def _area_selection(areas: dict) -> tuple[dict, list]:
+    """已选关注领域 → (收窄范围 scope, 已选模块列表)。
 
-    return g("catalog"), g("kit"), g("ide"), g("module")
-
-
-def _doc_hit(meta: dict, detail: dict, cats: list, kits: list, ides: list) -> bool:
-    """并集口径：命中任一已选文档维度即算「我的」；三个维度都没选 = 不限制（默认全部）。
-
-    kit / ide 只有 harmonyos-guides 与 harmonyos-references 有值（faqs / releases /
-    best-practices 为空），那三类文档只能靠 catalog 命中——与口径预览一致。
+    范围判定统一走 areas_scope / scope_where（收窄语义），问题列表的条目过滤用
+    同一套判定（doc_hit），保证「口径预览的数字」与「实际展示的条目」一致。
     """
-    if not (cats or kits or ides):
-        return True
-    cat = (meta or {}).get("catalog") or (detail or {}).get("catalog") or ""
-    kit = (meta or {}).get("kit") or ""
-    ide = (meta or {}).get("ide") or ""
-    return bool((cats and cat in cats) or (kits and kit in kits) or (ides and ide in ides))
+    scope = areas_scope(areas)
+    return scope, list(scope.get("modules") or [])
+
+
+def _doc_hit(meta: dict, detail: dict, scope: dict) -> bool:
+    """收窄口径：条目所属文档是否在范围内（未选任何文档范围 = 不限制）。"""
+    return doc_hit(scope, meta, detail)
 
 
 def _problem_state(mk: str, detail: dict, item_type: str, rules: dict,
@@ -373,9 +505,13 @@ def _item_summary(mk: str, detail: dict, item_type: str, probs: list) -> tuple[s
 
 
 def _build_issue_group(db, mk: str, run: dict | None, raw_items: list, metas: dict,
-                       cats: list, kits: list, ides: list, rules: dict,
+                       scope: dict, rules: dict,
                        handled_rules: dict, source: str = "") -> dict:
-    """把一次 run 的条目整理成一个模块分组（含三态计数 + 三条列表）。"""
+    """把一次 run 的条目整理成一个模块分组（含三态计数 + 三条列表）。
+
+    条目是否算「我的」走收窄语义（scope）：未选任何文档范围 = 不限（全部文档）；
+    命中大类但不在该大类的细分里 = 领域外（计入 n_out）。
+    """
     g = {"module": mk, "label": ISSUE_LABELS.get(mk, mk), "icon": ISSUE_ICONS.get(mk, ""),
          "source": source, "run_id": run["id"] if run else None,
          "run_at": _fmt_time((run or {}).get("started_at")),
@@ -386,7 +522,7 @@ def _build_issue_group(db, mk: str, run: dict | None, raw_items: list, metas: di
         d = it["detail"] or {}
         dk = d.get("doc_key") or it["item_key"] or ""
         meta = metas.get(dk) or {}
-        if not _doc_hit(meta, d, cats, kits, ides):
+        if not _doc_hit(meta, d, scope):
             g["n_out"] += 1
             continue
         probs, st = _problem_state(mk, d, it["item_type"], rules, handled_rules)
@@ -425,9 +561,10 @@ def _totals(groups: list) -> dict:
 
 def issue_context(db, areas: dict) -> dict:
     """「📋 我的问题」两段数据（每日增量 / 全量）+ 已处理汇总；异常时降级为空。"""
-    cats, kits, ides, mods = _area_selection(areas)
+    scope, mods = _area_selection(areas)
     out = {
-        "has_areas": bool(cats or kits or ides or mods),
+        "has_areas": bool((scope or {}).get("groups") or mods),
+        "scope": scope,
         "issue_modules": ISSUE_MODULES, "issue_labels": ISSUE_LABELS,
         "issue_icons": ISSUE_ICONS, "issue_max": ISSUE_MAX_ITEMS, "issue_hint": ISSUE_HINT,
         "daily": [], "full": [], "daily_totals": {}, "full_totals": {},
@@ -476,10 +613,10 @@ def issue_context(db, areas: dict) -> dict:
         keys += [(it["detail"] or {}).get("doc_key") or it["item_key"] for it in items]
     metas = _docs_meta(db, keys)
 
-    out["daily"] = [_build_issue_group(db, mk, run, items, metas, cats, kits, ides,
+    out["daily"] = [_build_issue_group(db, mk, run, items, metas, scope,
                                        rules, handled_rules)
                     for mk, (run, items) in daily_runs.items()]
-    out["full"] = [_build_issue_group(db, mk, run, items, metas, cats, kits, ides,
+    out["full"] = [_build_issue_group(db, mk, run, items, metas, scope,
                                       rules, handled_rules, source=src)
                    for mk, (run, items, src) in full_runs.items()]
     out["daily_totals"] = _totals(out["daily"])
@@ -500,12 +637,84 @@ def issue_context(db, areas: dict) -> dict:
     return out
 
 
+def scope_summary(scope: dict) -> list[dict]:
+    """收窄范围的文字回显：[{label, detail, narrowed}]（/me 只读区与 /me/areas 共用）。"""
+    out: list = []
+    for g in (scope or {}).get("groups") or []:
+        detail = ("、".join(s["value"] for s in g["subs"]) if g["narrowed"] else "全部")
+        out.append({"label": g["label"], "detail": detail,
+                    "narrowed": g["narrowed"], "count": len(g["subs"])})
+    return out
+
+
+def build_areas_view(db, eff: dict, options: dict) -> dict:
+    """GET /me/areas 渲染用：①模块 + ②大类（含细分选项与已选回填）结构化数据。"""
+    checked = {d: set(eff.get(d) or []) for d in NEW_DIMS}
+    opt_map = options or {}
+    modules = [{"value": v, "label": MODULE_LABELS[v],
+                "checked": v in checked[MODULE_DIM]} for v in MODULE_LABELS]
+    type_counts = dict(_docs_counts(db, "catalog"))
+    types: list = []
+    for t in TYPE_CATALOGS:
+        subs: list = []
+        for dim, axis, col in SUBDIV_DEFS.get(t, ()):
+            sel = checked[dim]
+            opts: list = []
+            seen: set = set()
+            for v, lbl, c in opt_map.get(dim, []):
+                seen.add(v)
+                opts.append({"value": v, "label": lbl,
+                             "count_fmt": f"{c:,}" if c else "", "checked": v in sel})
+            for v in sorted(sel - seen):   # 已不在选项里的历史值也回填（可取消）
+                opts.append({"value": v, "label": v, "count_fmt": "", "checked": True})
+            subs.append({"dim": dim, "field": _form_name(dim), "axis": axis,
+                         "hint": SUBDIV_HINTS.get(dim, ""),
+                         "n_selected": len(sel), "options": opts})
+        types.append({"value": t, "label": TYPE_LABELS[t],
+                      "full_label": TYPE_FULL_LABELS[t],
+                      "count_fmt": f"{type_counts.get(t, 0):,}",
+                      "checked": t in checked[TYPE_DIM], "subs": subs})
+    return {"modules": modules, "types": types}
+
+
+def areas_page_context(db, user: dict) -> dict:
+    """GET /me/areas 上下文：选项 + 已选回填 + 当前收窄口径预览。"""
+    uid = int(user["id"])
+    options = area_options(db)
+    raw = selected_areas(db, uid)
+    eff = areas_effective(raw)
+    scope = areas_scope(raw)
+    ctx = {
+        "area_options": options, "raw_areas": raw, "areas_eff": eff,
+        "areas_view": build_areas_view(db, eff, options),
+        "area_total": sum(len(v) for v in eff.values()),
+        "has_legacy": any(raw.get(d) for d in LEGACY_DIMS),
+        "module_labels": MODULE_LABELS, "module_dim": MODULE_DIM,
+        "type_labels": TYPE_LABELS, "type_full_labels": TYPE_FULL_LABELS,
+        "subdiv_parent": SUBDIV_PARENT, "subdiv_axis": SUBDIV_AXIS_LABEL,
+        "subdiv_hints": SUBDIV_HINTS, "subdiv_defs": SUBDIV_DEFS,
+        "scope_rule": SCOPE_RULE, "scope": scope,
+        "scope_summary": scope_summary(scope),
+    }
+    try:
+        ctx["preview"] = scope_preview(db, scope)
+    except Exception:  # noqa: BLE001 - 预览算不出来不影响保存/回填
+        ctx["preview"] = None
+    return ctx
+
+
 def _empty_context() -> dict:
-    return {"areas": {d: [] for d in DIMS}, "area_options": {}, "labels": {},
-            "dims": DIMS, "dim_labels": DIM_LABELS, "dim_hints": DIM_HINTS,
-            "area_total": 0, "area_logic": "union", "logic_labels": LOGIC_LABELS,
-            "logic_short": LOGIC_SHORT, "logic_desc": LOGIC_DESC,
-            "logic_updated_at": None, "preview": None,
+    return {"areas": {d: [] for d in ALL_AREA_DIMS},
+            "areas_eff": {d: [] for d in NEW_DIMS},
+            "area_options": {}, "labels": {}, "areas_view": {"modules": [], "types": []},
+            "area_total": 0, "has_legacy": False,
+            "module_labels": MODULE_LABELS, "module_dim": MODULE_DIM,
+            "type_labels": TYPE_LABELS, "type_full_labels": TYPE_FULL_LABELS,
+            "subdiv_parent": SUBDIV_PARENT, "subdiv_axis": SUBDIV_AXIS_LABEL,
+            "subdiv_hints": SUBDIV_HINTS, "subdiv_defs": SUBDIV_DEFS,
+            "scope_rule": SCOPE_RULE,
+            "scope": {"modules": [], "groups": [], "empty": True, "effective": {}},
+            "scope_summary": [], "preview": None,
             # 「📋 我的问题」（P2b）：未登录/无用户时给空壳，模板照常渲染
             "has_areas": False, "issue_modules": ISSUE_MODULES,
             "issue_labels": ISSUE_LABELS, "issue_icons": ISSUE_ICONS,
@@ -515,8 +724,8 @@ def _empty_context() -> dict:
 
 
 def me_context(db, user: dict) -> dict:
-    """/me 页面渲染关注领域区 + 口径预览区 + 我的问题区所需上下文（复用已打开的连接）；
-    预览/口径/问题取数异常不该让页面挂掉。"""
+    """/me 页面渲染关注领域（只读回显）+ 收窄口径预览 + 我的问题所需上下文；
+    预览/问题取数异常不该让页面挂掉。"""
     ctx = _empty_context()
     if not user or not user.get("id"):
         return ctx
@@ -524,11 +733,13 @@ def me_context(db, user: dict) -> dict:
     ctx["area_options"] = area_options(db)
     ctx["labels"] = _label_map(ctx["area_options"])
     ctx["areas"] = selected_areas(db, uid)
-    ctx["area_total"] = sum(len(v) for v in ctx["areas"].values())
-    ctx["area_logic"] = db.get_area_logic(uid)
-    ctx["logic_updated_at"] = db.get_area_logic_updated_at(uid)
+    ctx["areas_eff"] = areas_effective(ctx["areas"])
+    ctx["has_legacy"] = any(ctx["areas"].get(d) for d in LEGACY_DIMS)
+    ctx["area_total"] = sum(len(v) for v in ctx["areas_eff"].values())
+    ctx["scope"] = areas_scope(ctx["areas"])
+    ctx["scope_summary"] = scope_summary(ctx["scope"])
     try:
-        ctx["preview"] = doc_logic_preview(db, ctx["areas"])
+        ctx["preview"] = scope_preview(db, ctx["scope"])
     except Exception:  # noqa: BLE001 - 预览算不出来时页面降级（不影响其它区）
         ctx["preview"] = None
     try:
@@ -556,10 +767,15 @@ def _valid_value(options: dict, dim: str, value: str) -> bool:
     return value in {v for v, _l, _c in (options or {}).get(dim, [])}
 
 
-def register_me(app, db_path: str = DB_PATH):
-    """挂载「关注领域」写路由（/me 的读页面仍在 auth.py）。"""
+def _form_name(dim: str) -> str:
+    """细分 dim → 表单字段名（kit@guides → kit_guides）。"""
+    return dim.replace("@", "_")
 
-    def _require_user():
+
+def register_me(app, db_path: str = DB_PATH):
+    """挂载「关注领域」读写路由（/me 的读页面仍在 auth.py）。"""
+
+    def _require_user(next_path: str = "/me"):
         """返回 (user, redirect_response)；未登录时 user=None 并给出跳转响应。"""
         from auth import auth_enabled, current_user   # 延迟导入：避免与 auth 循环依赖
 
@@ -568,59 +784,98 @@ def register_me(app, db_path: str = DB_PATH):
             return user, None
         if not auth_enabled():
             return None, redirect("/")
-        return None, redirect("/auth/login?next=/me")
+        return None, redirect(f"/auth/login?next={next_path}")
 
-    @me_bp.route("/me/areas", methods=["POST"], strict_slashes=False)
+    @me_bp.route("/me/areas", methods=["GET", "POST"], strict_slashes=False)
     def me_areas():
-        user, resp = _require_user()
+        """「关注领域」独立配置页：①模块 + ②文档范围（大类 + 大类内细分）。
+
+        GET  渲染配置页（选项从 docs 表 DISTINCT 取，已保存的回填）。
+        POST 整体替换该用户的配置（user_areas 表，dim = module / type /
+             kit@guides / kit@references / ide@guides），保存后 302 回本页以便核对回填。
+        """
+        user, resp = _require_user("/me/areas")
         if resp is not None:
             return resp
+        if not user:            # 防御：_require_user 已兜住未登录
+            return redirect("/")
 
-        dim = (request.form.get("dim") or "").strip()
-        value = (request.form.get("value") or "").strip()
-        action = (request.form.get("action") or "add").strip()
-
+        uid = int(user["id"])
         db = IndexDB(db_path)
         try:
             options = area_options(db)
-            if dim not in DIMS:
-                flash("⚠️ 未知的关注维度，操作已忽略。", "warn")
-            elif not value or len(value) > MAX_VALUE_LEN:
-                flash("⚠️ 关注项取值不合法，操作已忽略。", "warn")
-            elif action == "remove":
-                if db.remove_user_area(int(user["id"]), dim, value):
-                    flash(f"✅ 已取消关注：{value}", "ok")
+            if request.method == "GET":
+                ctx = areas_page_context(db, user)
+                return render_template("me_areas.html", current_user=user,
+                                       notice=None, **ctx)
+
+            # ── POST：解析表单 → 整体替换 ──
+            def _getlist(name: str) -> list:
+                return [v.strip() for v in request.form.getlist(name)
+                        if v and v.strip()]
+
+            mods = [v for v in _getlist(MODULE_DIM) if v in MODULE_LABELS]
+            types = [v for v in _getlist(TYPE_DIM) if v in TYPE_LABELS]
+            pairs: list = ([(MODULE_DIM, v) for v in mods]
+                           + [(TYPE_DIM, v) for v in types])
+            warns: list = []
+            n_sub = 0
+            for parent, defs in SUBDIV_DEFS.items():
+                for dim, axis, _col in defs:
+                    vals = _getlist(_form_name(dim))
+                    if not vals:
+                        continue
+                    if parent not in types:   # 大类没勾 → 细分无处安放，丢弃并提示
+                        warns.append(f"{TYPE_LABELS[parent]}的{axis}细分已忽略"
+                                     f"（未勾选「{TYPE_LABELS[parent]}」）")
+                        continue
+                    bad = [v for v in vals
+                           if len(v) > MAX_VALUE_LEN or not _valid_value(options, dim, v)]
+                    if bad:
+                        warns.append(f"{TYPE_LABELS[parent]}的{axis}里有"
+                                     f"{len(bad)} 个取值不在可选范围内，已忽略")
+                    good = [v for v in vals if v not in bad]
+                    pairs += [(dim, v) for v in good]
+                    n_sub += len(good)
+
+            if db.set_user_areas(uid, pairs, clear_dims=ALL_AREA_DIMS):
+                if not pairs:
+                    flash("✅ 已保存：未选任何关注领域 = 全部模块 + 全部文档。", "ok")
                 else:
-                    flash(f"ℹ️ 未在关注中：{value}", "info")
-            elif not _valid_value(options, dim, value):
-                flash("⚠️ 该取值不在可选范围内，操作已忽略。", "warn")
-            elif db.add_user_area(int(user["id"]), dim, value):
-                flash(f"✅ 已关注：{value}", "ok")
+                    flash(f"✅ 关注领域已保存：模块 {len(mods)} 项 · "
+                          f"文档范围 {len(types)} 个大类"
+                          f"{f'（细分 {n_sub} 项）' if n_sub else ''}。", "ok")
+                for w in warns:
+                    flash(f"⚠️ {w}", "warn")
             else:
-                flash(f"ℹ️ 已在关注中：{value}", "info")
+                flash("⚠️ 保存失败（数据库写入异常），请稍后重试。", "warn")
         finally:
             db.close()
-        return redirect("/me")
+        return redirect("/me/areas")
 
     @me_bp.route("/me/logic", methods=["POST"], strict_slashes=False)
     def me_logic():
-        """口径开关（只存不算）：union=甲·并集 / intersection=乙·交集。"""
+        """【已废弃】旧的口径开关（union / intersection）。
+
+        收窄语义上线后全站只有一种口径，这里保留路由只为兼容旧书签 / 旧表单：
+        仍会保存开关值，但不再影响任何取数。
+        """
         user, resp = _require_user()
         if resp is not None:
             return resp
 
         logic = (request.form.get("logic") or "").strip()
-        if logic not in AREA_LOGICS:
+        if logic not in IndexDB.AREA_LOGICS:
             flash("⚠️ 未知的统计口径，操作已忽略。", "warn")
             return redirect("/me")
-
         db = IndexDB(db_path)
         try:
             saved = db.set_area_logic(int(user["id"]), logic)
         finally:
             db.close()
         if saved:
-            flash(f"✅ 统计口径已保存：{LOGIC_LABELS[logic]}（后续「我的问题列表」按此取数）", "ok")
+            flash("ℹ️ 口径开关已记录，但已废弃：现在统一按「收窄语义」取数"
+                  "（见「🎯 关注领域」与「📐 口径预览」的说明）。", "info")
         else:
             flash("⚠️ 口径保存失败，请稍后重试。", "warn")
         return redirect("/me")

@@ -206,94 +206,72 @@
     </div>
 
     <div class="me-card">
-        <h2>🎯 关注领域{% if area_total %}<span class="me-badge">已关注 {{ area_total }} 项</span>{% endif %}</h2>
-        <p class="me-hint">选定你关注的文档类型 / Kit / IDE 分组 / 检查模块（可多选）。
-        点标签上的 × 取消，下拉框选好点「＋ 添加」，保存即生效。后续「我的问题列表」
-        与日报只推送这些范围内的内容。</p>
+        <h2>🎯 关注领域{% if area_total %}<span class="me-badge">已关注 {{ area_total }} 项</span>{% else %}<span class="me-badge">全部</span>{% endif %}</h2>
+        <p class="me-hint">这里只读回显当前配置（两级：① 关注的模块 ＋ ② 关注的文档范围）。
+        要改动请点右上角的「设置关注领域 →」，在独立配置页里选好保存。</p>
 
         {% with msgs = get_flashed_messages(with_categories=true) %}
         {% if msgs %}{% for cat, m in msgs %}<div class="me-flash {{ cat }}">{{ m }}</div>{% endfor %}{% endif %}
         {% endwith %}
 
-        {% for dim in dims %}
-        {% set sel = areas.get(dim) or [] %}
-        {% set opts = area_options.get(dim) or [] %}
         <div class="me-dim">
             <div class="me-dim-h">
-                <span class="t">{{ dim_labels[dim] }}</span>
-                <span class="n">已选 {{ sel|length }} 项{% if opts %} · 可选 {{ opts|length }} 项{% endif %}</span>
+                <span class="t">① 关注的模块</span>
+                <span class="n">{{ scope.modules | length }} 项{% if not scope.modules %}（未限制 = 全部模块）{% endif %}</span>
             </div>
-            <div class="me-dim-hint">{{ dim_hints[dim] }}</div>
+            <div class="me-dim-hint">只影响「我的问题」展示哪几类检查的问题；与文档范围是【且】。</div>
             <div class="me-tags">
-                {% for v in sel %}
-                <form class="me-tag-form" method="post" action="/me/areas">
-                    <input type="hidden" name="action" value="remove">
-                    <input type="hidden" name="dim" value="{{ dim }}">
-                    <input type="hidden" name="value" value="{{ v }}">
-                    <button class="me-tag" type="submit" title="点击取消关注">
-                        {{ labels.get(dim, {}).get(v, v) }}<span class="x">×</span>
-                    </button>
-                </form>
+                {% for mk in scope.modules %}
+                <span class="me-tag" style="cursor:default;">{{ module_labels.get(mk, mk) }}</span>
                 {% else %}
-                <span class="me-tag-ph">尚未选择</span>
+                <span class="me-tag-ph">未限制（全部 4 个模块）</span>
                 {% endfor %}
             </div>
-            {% set ns = namespace(avail=0) %}
-            {% for v, lbl, cnt in opts %}{% if v not in sel %}{% set ns.avail = ns.avail + 1 %}{% endif %}{% endfor %}
-            {% if ns.avail %}
-            <form class="me-add" method="post" action="/me/areas">
-                <input type="hidden" name="action" value="add">
-                <input type="hidden" name="dim" value="{{ dim }}">
-                <select name="value" aria-label="选择要关注的{{ dim_labels[dim] }}">
-                    {% for v, lbl, cnt in opts %}{% if v not in sel %}
-                    <option value="{{ v }}">{{ lbl }}{% if cnt %}（{{ cnt }} 篇）{% endif %}</option>
-                    {% endif %}{% endfor %}
-                </select>
-                <button type="submit">＋ 添加</button>
-            </form>
-            {% else %}
-            <div class="me-tag-ph">该维度已全部关注。</div>
-            {% endif %}
         </div>
-        {% endfor %}
+
+        <div class="me-dim">
+            <div class="me-dim-h">
+                <span class="t">② 关注的文档范围</span>
+                <span class="n">{{ scope_summary | length }} 个大类{% if not scope_summary %}（未限制 = 全部文档）{% endif %}</span>
+            </div>
+            <div class="me-dim-hint">大类之间是【或】；大类里选了细分则把该大类<b>收窄</b>到细分范围（不再包含该大类的其余文档）。</div>
+            <div class="me-tags">
+                {% for g in scope_summary %}
+                <span class="me-tag" style="cursor:default;">{{ g.label }}{% if g.narrowed %} → {{ g.detail }}{% else %}（全部）{% endif %}</span>
+                {% else %}
+                <span class="me-tag-ph">未限制（全部文档）</span>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="me-add" style="margin-top:14px;">
+            <a class="me-btn me-btn-primary" href="/me/areas">⚙️ 设置关注领域 →</a>
+            <span class="me-hint" style="font-size:12.5px;">两级配置：先选模块，再选文档范围（勾「指南」/「API 参考」可再细分 Kit / IDE 分组）。</span>
+        </div>
     </div>
 
     <div class="me-card">
-        <h2>📐 口径预览<span class="me-badge">{{ logic_labels.get(area_logic, area_logic) }} 生效</span></h2>
-        <p class="me-hint">{{ logic_desc }}</p>
-
-        <div class="me-logic-switch">
-            <span class="me-logic-lbl">口径：</span>
-            {% for k in ['union', 'intersection'] %}
-            <form class="me-logic-form" method="post" action="/me/logic">
-                <input type="hidden" name="logic" value="{{ k }}">
-                <button class="me-logic-btn{% if area_logic == k %} on{% endif %}" type="submit"
-                        title="保存后生效（只存开关，问题列表在后续阶段）">{% if k == 'union' %}甲 · 并集{% else %}乙 · 交集{% endif %}{% if area_logic == k %} ✓{% endif %}</button>
-            </form>
-            {% endfor %}
-            <span class="me-logic-lbl">{% if logic_updated_at %}最近保存 {{ logic_updated_at }}{% else %}尚未保存过，默认并集{% endif %}</span>
-        </div>
+        <h2>📐 口径预览<span class="me-badge">收窄语义</span></h2>
+        <p class="me-hint">{{ scope_rule }}</p>
 
         {% if not preview %}
         <div class="me-cmp-foot">口径预览暂不可用（统计出错），不影响上面的关注领域配置。</div>
         {% else %}
-        {% if not preview.has_doc_dims %}
-        <div class="me-warn" style="background:#fdf0e3;color:#c2570a;">ℹ️ 未设关注领域，默认全部——全站 {{ preview.total_docs_fmt }} 篇文档都在范围内（此时甲、乙结果相同）。选上「文档类型 / Kit / IDE 分组」后，这里会分别算出两种口径的数字。</div>
+        {% if preview.all_docs %}
+        <div class="me-warn" style="background:#fdf0e3;color:#c2570a;">ℹ️ 未设文档范围，默认全部——全站 {{ preview.total_docs_fmt }} 篇文档都在范围内。到「设置关注领域」勾上大类（可再细分 Kit / IDE 分组）后，这里会算出收窄后的命中数。</div>
         {% endif %}
         <div class="me-cmp">
-            {% for k in ['union', 'intersection'] %}
-            {% set p = preview[k] %}
-            <div class="me-cmp-col{% if k == 'intersection' and p.count == 0 %} empty{% endif %}">
+            <div class="me-cmp-col">
                 <div class="me-cmp-h">
-                    <span class="me-cmp-tag {{ k }}">{% if k == 'union' %}甲{% else %}乙{% endif %}</span>
-                    <span class="me-cmp-name">{% if k == 'union' %}并集{% else %}交集{% endif %}</span>
-                    <span class="me-cmp-op">{% if k == 'union' %}∪{% else %}∩{% endif %}</span>
-                    <span class="me-cmp-n">{{ '并集' if k == 'union' else '交集' }} → {{ p.count_fmt }} 篇</span>
+                    <span class="me-cmp-tag union">收窄</span>
+                    <span class="me-cmp-name">命中文档</span>
+                    <span class="me-cmp-op">→</span>
+                    <span class="me-cmp-n">{{ preview.hit.count_fmt }} 篇</span>
                 </div>
-                <div class="me-cmp-sub">{% if k == 'union' %}命中任一已选维度即算（范围宽）{% else %}需同时命中所有已选维度（范围窄）{% endif %}</div>
-                {% if p.samples %}
+                <div class="me-cmp-sub">全站 {{ preview.total_docs_fmt }} 篇{% if preview.all_docs %}（未设范围 = 全部）{% endif %}；模块不参与文档数（它不是文档属性）</div>
+                {% if preview.hit.samples %}
                 <ul class="me-samples">
-                    {% for s in p.samples %}
+                    {% for s in preview.hit.samples %}
                     <li>
                         <span class="t">{{ s.title }}</span>
                         <span class="m">catalog: {{ s.catalog }}{% if s.kit %} · Kit: {{ s.kit }}{% endif %}{% if s.ide %} · IDE: {{ s.ide }}{% endif %}{% if not (s.kit or s.ide) %} · Kit/IDE: 空{% endif %}</span>
@@ -304,19 +282,32 @@
                 <div class="me-cmp-none">没有命中的文档（示例为空）。</div>
                 {% endif %}
             </div>
-            {% endfor %}
-        </div>
-        {% if preview.empty_intersection %}
-        <div class="me-warn">⚠️ 交集为空——这两类互斥<br>
-            已选维度之间没有一篇文档同时满足（Kit 只覆盖 harmonyos-guides / harmonyos-references，
-            IDE 分组只覆盖 harmonyos-guides，两者几乎不重叠）。此时若选「乙 · 交集」，
-            「我的问题列表」将没有内容。</div>
-        {% endif %}
-        <div class="me-cmp-foot">
-            {% if preview.has_doc_dims %}本页按已选维度计算：{% for dim in ['catalog', 'kit', 'ide'] %}{{ dim_labels[dim] }} {{ (areas.get(dim) or []) | length }} 项{% if not loop.last %} · {% endif %}{% endfor %}（未选的维度不参与口径，否则交集恒为空）。
-            {% else %}未选任何文档维度，两种口径都按「全部文档」（{{ preview.total_docs_fmt }} 篇）计。
+            {% if preview.groups %}
+            <div class="me-cmp-col">
+                <div class="me-cmp-h">
+                    <span class="me-cmp-tag intersection">明细</span>
+                    <span class="me-cmp-name">各大类</span>
+                </div>
+                <table class="mi-hd" style="margin-top:6px;">
+                    <thead><tr><th>大类</th><th>口径</th><th>篇数</th></tr></thead>
+                    <tbody>
+                    {% for g in preview.groups %}
+                    <tr>
+                        <td>{{ g.label }}</td>
+                        <td>{% if g.narrowed %}收窄为{% for s in g.subs %}{{ s.value }}{% if not loop.last %}、{% endif %}{% endfor %}{% else %}整个大类{% endif %}</td>
+                        <td>{{ g.count_fmt }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
             {% endif %}
-            {% if preview.modules %}检查模块已选 {{ preview.modules | length }} 项——它不是文档属性、无法按 doc_key 判定，因此不计入上面的文档数，后续「我的问题列表」按它筛问题类型。{% else %}尚未选择检查模块。{% endif %}
+        </div>
+        <div class="me-cmp-foot">
+            {% if preview.groups %}
+            计算口径（与「我的问题」取数同一段 SQL）：{% for g in preview.groups %}（catalog = {{ g.catalog }}{% if g.narrowed %} 且 {% for s in g.subs %}{% if s.axis == 'Kit' %}kit{% else %}ide{% endif %} = {{ s.value }}{% if not loop.last %} 或 {% endif %}{% endfor %}{% endif %}）{% if not loop.last %} 或 {% endif %}{% endfor %}。
+            {% else %}未选任何文档范围，按「全部文档」（{{ preview.total_docs_fmt }} 篇）计。{% endif %}
+            未选模块 = 全部 4 个模块（模块只筛问题类型，不参与文档数）。
         </div>
         {% endif %}
     </div>
@@ -397,9 +388,9 @@
 
         {% if not has_areas %}
         <div class="me-warn" style="background:#fdf0e3;color:#c2570a;">
-            ℹ️ <b>未设关注领域</b>——当前按「默认全部」展示（全站的问题都在范围内）。
-            想只看自己负责的范围，请到上面的「🎯 关注领域」选上 文档类型 / Kit / IDE 分组 / 检查模块
-            （可多选，并集口径；某维度不选 = 不限制）。
+            ℹ️ <b>未设关注领域</b>——当前按「默认全部」展示（全部模块 + 全站文档的问题都在范围内）。
+            想只看自己负责的范围，请点上面的「⚙️ 设置关注领域 →」选上 关注的模块 / 关注的文档范围
+            （不选 = 不限制；大类之间是【或】，大类里选细分则把该大类【收窄】到细分）。
         </div>
         {% endif %}
 
@@ -411,7 +402,7 @@
                 <span class="mi-sec-num">仍存在 <b>{{ daily_totals.n_open or 0 }}</b> 条 · 已忽略 {{ daily_totals.n_ignored or 0 }} · 已处理 {{ daily_totals.n_handled or 0 }}</span>
             </div>
             {% for g in daily %}{{ mi_group(g, 'd-' ~ g.module) }}{% endfor %}
-            {% if not daily %}<div class="mi-empty">没有可展示的检查模块——关注领域里的「检查模块」一项都没选。</div>{% endif %}
+            {% if not daily %}<div class="mi-empty">没有可展示的检查模块——「关注的模块」一项都没选。</div>{% endif %}
         </div>
 
         {# ── ② 全量：跨 run 按 item_key 去重后仍存在（默认折叠）── #}
@@ -481,8 +472,11 @@
         <div class="mi-foot">
             · 「仍存在」= 最新一次检查里还有、且没被忽略/处理掉的条目；<b>已忽略 / 已处理都是全局的</b>（谁先点谁生效，不按用户区分），
             只做展示端过滤——run / items 原始数据不动，所以<b>恢复即时生效</b>，不必重跑检查。<br>
-            · Kit / IDE 只有 <span class="mono">harmonyos-guides</span> 与 <span class="mono">harmonyos-references</span> 有值，
-            FAQ / 版本说明 / 最佳实践只能靠「文档类型」命中；「检查模块」维度作用于<b>问题所属模块</b>。<br>
+            · 过滤按<b>收窄语义</b>：「关注的模块」与「关注的文档范围」是【且】；大类之间是【或】；
+            大类里选了细分就把该大类收窄到细分（例：指南 + ArkUI = 只看 ArkUI 的指南，不含指南的其余文档）；
+            本组「领域外 N 条」= 命中大类但落在细分之外的条目。<br>
+            · Kit / IDE 细分只有 <span class="mono">harmonyos-guides</span> 与 <span class="mono">harmonyos-references</span> 有值
+            （所以只有「指南」能细分 IDE 分组）；FAQ / 版本说明 / 最佳实践没有细分，勾上就是整个大类。<br>
             · 全部忽略记录可在 <a href="/ignored/">🚫 已忽略问题</a> 页集中查看与恢复。
         </div>
     </div>

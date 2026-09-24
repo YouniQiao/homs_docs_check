@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .ar-wrap { max-width: 1080px; margin: 4px auto 0; }
+    .ar-card { background: var(--card); border: 1px solid var(--border);
+               border-radius: var(--radius); box-shadow: var(--shadow);
+               padding: 22px 24px; margin-bottom: 16px; }
+    .ar-card h1 { font-size: 19px; margin-bottom: 6px; }
+    .ar-card h2 { font-size: 15px; margin-bottom: 4px; }
+    .ar-hint { font-size: 13px; color: var(--muted); line-height: 1.8; }
+    .ar-flash { padding: 10px 14px; border-radius: 9px; font-size: 13px; margin: 10px 0 0; }
+    .ar-flash.ok { background: #e5f6ec; color: var(--added); }
+    .ar-flash.warn { background: #fdeaea; color: var(--deleted); }
+    .ar-flash.info { background: var(--primary-soft); color: var(--primary); }
+    .ar-rule { padding: 11px 15px; border-radius: 9px; background: var(--primary-soft);
+               color: var(--primary); font-size: 12.5px; line-height: 1.85; margin: 12px 0 0; }
+    .ar-legacy { padding: 11px 15px; border-radius: 9px; background: #fdf0e3;
+                 color: #c2570a; font-size: 12.5px; line-height: 1.8; margin: 12px 0 0; }
+    .ar-cols { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+    .ar-col { flex: 1 1 420px; min-width: 320px; }
+    .ar-col-h { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
+                border-bottom: 1px dashed var(--border); padding-bottom: 8px;
+                margin-bottom: 12px; }
+    .ar-col-h .t { font-size: 15px; font-weight: 700; }
+    .ar-col-h .n { font-size: 12px; color: var(--muted); margin-left: auto; }
+    .ar-opt { display: flex; align-items: flex-start; gap: 9px; padding: 7px 10px;
+              border: 1px solid transparent; border-radius: 8px; cursor: pointer;
+              font-size: 13.5px; line-height: 1.6; }
+    .ar-opt:hover { background: #f7f9fc; border-color: var(--border); }
+    .ar-opt input { margin-top: 3px; flex: 0 0 auto; }
+    .ar-opt .m { font-size: 11.5px; color: var(--muted); }
+    .ar-opt .cn { font-size: 11.5px; color: var(--muted); margin-left: auto;
+                  white-space: nowrap; padding-left: 8px; }
+    .ar-opt.on { background: var(--primary-soft); border-color: #c9d6f5; }
+    .ar-type { border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px;
+               margin-bottom: 10px; background: #fbfcff; }
+    .ar-type > .ar-opt { font-size: 14px; font-weight: 600; }
+    .ar-sub { margin: 4px 6px 10px 26px; padding: 10px 12px; border-radius: 9px;
+              background: #fff; border: 1px dashed var(--border); }
+    .ar-sub[hidden] { display: none; }
+    .ar-sub-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+                margin-bottom: 7px; }
+    .ar-sub-h .t { font-size: 13px; font-weight: 600; }
+    .ar-sub-h .n { font-size: 11.5px; color: var(--muted); margin-left: auto; }
+    .ar-sub-hint { font-size: 11.5px; color: var(--muted); margin-bottom: 8px;
+                   line-height: 1.7; }
+    .ar-list { max-height: 250px; overflow: auto; border: 1px solid var(--border);
+               border-radius: 8px; padding: 3px; background: #fff; }
+    .ar-list .ar-opt { font-size: 13px; padding: 5px 8px; }
+    .ar-find { width: 100%; box-sizing: border-box; padding: 6px 10px; margin-bottom: 7px;
+               border: 1px solid var(--border); border-radius: 7px; font-size: 12.5px;
+               font-family: inherit; }
+    .ar-find:focus { outline: none; border-color: var(--primary);
+                     box-shadow: 0 0 0 3px rgba(47,84,208,.12); }
+    .ar-empty { font-size: 12px; color: var(--muted); padding: 6px 8px; }
+    .ar-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .ar-btn { padding: 9px 22px; border: none; border-radius: 9px; background: var(--primary);
+              color: #fff; font-size: 14px; font-family: inherit; cursor: pointer;
+              font-weight: 600; }
+    .ar-btn:hover { opacity: .92; }
+    .ar-link { font-size: 13px; color: var(--primary); text-decoration: none; }
+    .ar-link:hover { text-decoration: underline; }
+    .ar-saved { font-size: 12.5px; color: var(--muted); line-height: 1.9; }
+    .ar-chip { display: inline-block; font-size: 12px; padding: 2px 10px; border-radius: 999px;
+               background: var(--primary-soft); color: var(--primary); margin: 0 6px 4px 0; }
+    .ar-chip.plain { background: #f1f3f8; color: #6b7183; }
+    .ar-pv { font-size: 12.5px; color: var(--muted); line-height: 1.85; }
+    .ar-pv b { color: var(--primary); font-size: 14px; }
+    .ar-pv-tbl { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .ar-pv-tbl th, .ar-pv-tbl td { font-size: 12px; padding: 6px 8px; text-align: left;
+                                   border-bottom: 1px solid var(--border); }
+    .ar-pv-tbl th { background: #f7f9fc; color: #41485c; }
+</style>
+
+<div class="ar-wrap">
+{% if notice %}
+    <div class="ar-card">
+        <h1>😕 暂不可用</h1>
+        <p class="ar-hint">{{ notice }}</p>
+        <p style="margin-top:14px;"><a href="/">← 返回首页</a></p>
+    </div>
+{% elif current_user %}
+    <div class="ar-card">
+        <h1>🎯 设置关注领域</h1>
+        <p class="ar-hint">两级配置：① 关注的模块（检查哪几类问题）＋ ② 关注的文档范围（看哪些文档）。
+        两者是【且】的关系；文档范围里各大类之间是【或】；大类里再选细分则把该大类<b>收窄</b>到细分。</p>
+        <div class="ar-rule">🧭 {{ scope_rule }}</div>
+        {% if has_legacy %}
+        <div class="ar-legacy">ℹ️ 检测到 P2a 的旧版 4 维配置，已按新结构折算显示在下面
+            （旧「文档类型」→ 大类；旧「Kit」→ 指南的 Kit + API 参考的 Kit；旧「IDE 分组」→ 指南的 IDE 分组）。
+            <b>点「保存」即迁移为新格式</b>（旧的 dim 行会被替换）。</div>
+        {% endif %}
+        {% with msgs = get_flashed_messages(with_categories=true) %}
+        {% if msgs %}{% for cat, m in msgs %}<div class="ar-flash {{ cat }}">{{ m }}</div>{% endfor %}{% endif %}
+        {% endwith %}
+        <p style="margin-top:12px;"><a class="ar-link" href="/me">← 返回「我的」</a></p>
+    </div>
+
+    <form method="post" action="/me/areas" id="arForm">
+    <div class="ar-card">
+        <div class="ar-cols">
+            {# ── ① 关注的模块 ── #}
+            <div class="ar-col">
+                <div class="ar-col-h">
+                    <span class="t">① 关注的模块</span>
+                    <span class="n">不选 = 全部模块</span>
+                </div>
+                <p class="ar-sub-hint">只影响「我的问题」里展示哪几类检查的问题（与文档范围是【且】）。</p>
+                {% for m in areas_view.modules %}
+                <label class="ar-opt{% if m.checked %} on{% endif %}">
+                    <input type="checkbox" name="module" value="{{ m.value }}"
+                           {% if m.checked %}checked{% endif %}>
+                    <span>{{ m.label }}</span>
+                </label>
+                {% endfor %}
+            </div>
+
+            {# ── ② 关注的文档范围 ── #}
+            <div class="ar-col">
+                <div class="ar-col-h">
+                    <span class="t">② 关注的文档范围</span>
+                    <span class="n">不选 = 全部文档（{{ preview.total_docs_fmt if preview else '' }} 篇）</span>
+                </div>
+                <p class="ar-sub-hint">勾了「指南」/「API 参考」后，下面会展开对应的细分（Kit / IDE 分组）；
+                再选细分即把该大类<b>收窄</b>到细分范围。</p>
+                {% for t in areas_view.types %}
+                <div class="ar-type">
+                    <label class="ar-opt{% if t.checked %} on{% endif %}">
+                        <input type="checkbox" name="type" value="{{ t.value }}"
+                               data-type="{{ t.value }}" {% if t.checked %}checked{% endif %}>
+                        <span>{{ t.full_label }}</span>
+                        <span class="cn">{{ t.count_fmt }} 篇</span>
+                    </label>
+                    {% for s in t.subs %}
+                    <div class="ar-sub" data-parent="{{ t.value }}"
+                         {% if not t.checked %}hidden{% endif %}>
+                        <div class="ar-sub-h">
+                            <span class="t">细分 · {{ s.axis }}</span>
+                            <span class="n">已选 <span data-count="{{ s.field }}">{{ s.n_selected }}</span> 项 · 不选 = 整个「{{ t.label }}」</span>
+                        </div>
+                        <div class="ar-sub-hint">{{ s.hint }}</div>
+                        {% if s.options | length > 12 %}
+                        <input class="ar-find" type="text" data-find="{{ s.field }}"
+                               placeholder="筛选 {{ s.axis }}（输入关键字，如 ArkUI）">
+                        {% endif %}
+                        <div class="ar-list" data-list="{{ s.field }}">
+                            {% for o in s.options %}
+                            <label class="ar-opt{% if o.checked %} on{% endif %}">
+                                <input type="checkbox" name="{{ s.field }}" value="{{ o.value }}"
+                                       {% if o.checked %}checked{% endif %}>
+                                <span>{{ o.label }}</span>
+                                {% if o.count_fmt %}<span class="cn">{{ o.count_fmt }} 篇</span>{% endif %}
+                            </label>
+                            {% else %}
+                            <div class="ar-empty">暂无可用取值。</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="ar-card">
+        <div class="ar-actions">
+            <button class="ar-btn" type="submit">💾 保存关注领域</button>
+            <a class="ar-link" href="/me">取消，返回「我的」</a>
+            <span class="ar-hint" style="margin-left:auto;">保存 = 整体替换当前配置，立即生效。</span>
+        </div>
+    </div>
+    </form>
+
+    <div class="ar-card">
+        <h2>📐 当前已保存的口径预览</h2>
+        <p class="ar-hint">按收窄语义算「当前保存的配置」命中多少文档（改表单后需保存才会更新这里）。</p>
+        {% if not preview %}
+        <p class="ar-pv" style="margin-top:10px;">预览暂不可用（统计出错），不影响保存与回填。</p>
+        {% else %}
+        <p class="ar-pv" style="margin-top:10px;">
+            命中 <b>{{ preview.hit.count_fmt }}</b> 篇 / 全站 {{ preview.total_docs_fmt }} 篇
+            {% if preview.all_docs %}（未选任何文档范围 = 全部文档）{% endif %}
+        </p>
+        <div style="margin-top:8px;">
+            <span class="ar-chip plain">模块：{% if scope.modules %}{% for mk in scope.modules %}{{ module_labels.get(mk, mk) }}{% if not loop.last %} / {% endif %}{% endfor %}{% else %}全部{% endif %}</span>
+            {% for g in scope_summary %}
+            <span class="ar-chip">{{ g.label }} → {% if g.narrowed %}{{ g.detail }}{% else %}全部{% endif %}</span>
+            {% endfor %}
+            {% if not scope_summary %}<span class="ar-chip plain">文档范围：全部</span>{% endif %}
+        </div>
+        {% if preview.groups %}
+        <table class="ar-pv-tbl">
+            <thead><tr><th>大类</th><th>是否收窄</th><th>命中篇数</th><th>细分明细</th></tr></thead>
+            <tbody>
+            {% for g in preview.groups %}
+            <tr>
+                <td>{{ g.label }}</td>
+                <td>{% if g.narrowed %}收窄{% else %}整个大类{% endif %}</td>
+                <td>{{ g.count_fmt }}</td>
+                <td>{% if g.subs %}{% for s in g.subs %}{{ s.axis }}: {{ s.value }} = {{ s.count_fmt }} 篇{% if not loop.last %}<br>{% endif %}{% endfor %}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+        {% endif %}
+    </div>
+{% else %}
+    <div class="ar-card">
+        <h1>🔑 请先登录</h1>
+        <p class="ar-hint">「设置关注领域」需要 GitCode 账号登录后使用。</p>
+        {% if auth_enabled %}
+        <p style="margin-top:16px;">
+            <a class="ar-btn" style="display:inline-block;text-decoration:none;"
+               href="/auth/login?next=/me/areas">使用 GitCode 登录</a>
+        </p>
+        {% endif %}
+    </div>
+{% endif %}
+</div>
+
+<script>
+/* 大类 → 细分：勾上「指南」/「API 参考」才显示对应细分区（不勾 = 整个大类，细分无处安放）。 */
+(function () {
+  function syncSubs() {
+    document.querySelectorAll('input[type="checkbox"][data-type]').forEach(function (cb) {
+      var box = cb.closest('.ar-type');
+      if (!box) return;
+      box.querySelectorAll('.ar-sub[data-parent]').forEach(function (sub) {
+        sub.hidden = !cb.checked;
+      });
+      var lab = box.querySelector(':scope > .ar-opt');
+      if (lab) lab.classList.toggle('on', cb.checked);
+    });
+  }
+  document.querySelectorAll('input[type="checkbox"][data-type]').forEach(function (cb) {
+    cb.addEventListener('change', syncSubs);
+  });
+  syncSubs();
+
+  /* 已选项高亮 + 细分已选计数 */
+  function syncOpt(lab) {
+    var cb = lab.querySelector('input[type="checkbox"]');
+    if (cb) lab.classList.toggle('on', cb.checked);
+  }
+  document.querySelectorAll('.ar-opt').forEach(function (lab) {
+    var cb = lab.querySelector('input[type="checkbox"]');
+    if (!cb) return;
+    cb.addEventListener('change', function () {
+      syncOpt(lab);
+      var list = lab.closest('.ar-list');
+      if (!list) return;
+      var field = list.dataset.list;
+      var n = list.querySelectorAll('input[type="checkbox"]:checked').length;
+      var out = document.querySelector('[data-count="' + field + '"]');
+      if (out) out.textContent = n;
+    });
+  });
+
+  /* 细分区筛选框（Kit 有 100+ 项） */
+  document.querySelectorAll('input[data-find]').forEach(function (inp) {
+    inp.addEventListener('input', function () {
+      var q = inp.value.trim().toLowerCase();
+      var list = document.querySelector('[data-list="' + inp.dataset.find + '"]');
+      if (!list) return;
+      list.querySelectorAll('.ar-opt').forEach(function (lab) {
+        var txt = lab.textContent.toLowerCase();
+        lab.style.display = (!q || txt.indexOf(q) >= 0) ? '' : 'none';
+      });
+    });
+  });
+})();
+</script>
+{% endblock %}

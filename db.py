@@ -611,6 +611,35 @@ class IndexDB:
         self.commit()
         return bool(cur is not None and cur.rowcount)
 
+    def set_user_areas(self, user_id: int, pairs: list, clear_dims: tuple = ()) -> bool:
+        """整体替换某用户的关注领域：先按 clear_dims 删行，再逐条插入 pairs（同一事务）。
+
+        用于 /me/areas 的「保存」：一次提交 = 一份完整配置，避免逐条 add/remove 的中间态。
+        clear_dims 里的每个 dim 都会被清空（传入旧 4 维 dim 即实现旧配置 → 新格式的迁移）。
+        """
+        if not user_id:
+            return False
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            if clear_dims:
+                marks = ",".join("?" * len(clear_dims))
+                self._conn.execute(
+                    f"DELETE FROM user_areas WHERE user_id=? AND dim IN ({marks})",
+                    (user_id, *clear_dims))
+            seen = set()
+            for dim, value in (pairs or []):
+                if not dim or not value or (dim, value) in seen:
+                    continue
+                seen.add((dim, value))
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO user_areas (user_id, dim, value, created_at)"
+                    " VALUES (?,?,?,?)", (user_id, dim, value, now))
+            self._conn.commit()
+            return True
+        except sqlite3.Error:
+            self._conn.rollback()
+            return False
+
     def count_user_areas(self, user_id: int) -> int:
         return self._conn.execute(
             "SELECT COUNT(*) FROM user_areas WHERE user_id=?",
