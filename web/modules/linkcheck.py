@@ -20,8 +20,7 @@ if str(BASE_DIR) not in sys.path:
 
 import ignores  # noqa: E402
 
-CATALOGS = ["best-practices", "harmonyos-guides", "harmonyos-references",
-            "harmonyos-faqs", "harmonyos-releases"]
+from catalogs import CATALOG_LABELS, CATALOG_OPTIONS  # noqa: E402
 
 # 界面上"可见问题"的字段（决定列表是否收录该文档）
 VISIBLE_FIELDS = ("dead_count", "vintage_count", "anchor_miss_count")
@@ -99,7 +98,7 @@ LINKCHECK_MODULE = {
          "options": [("all", "全部"), ("dead", "断链"),
                      ("vintage", "误链历史版本"), ("anchor_miss", "锚点失效")]},
         {"key": "catalog", "label": "分类", "source": "detail",
-         "options": [("all", "全部")] + [(c, c) for c in CATALOGS]},
+         "options": list(CATALOG_OPTIONS)},
         {"key": "sort", "label": "排序", "source": "sort",
          "options": [("id_desc", "默认"), ("dead_count_desc", "断链从高到低"),
                      ("anchor_miss_count_desc", "锚点失效从高到低")]},

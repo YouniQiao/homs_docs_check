@@ -95,13 +95,7 @@ LEGACY_DIMS = ("catalog", "kit", "ide")
 ALL_AREA_DIMS = NEW_DIMS + LEGACY_DIMS
 
 # 大类（= docs.catalog 的实际取值）与显示名
-TYPE_LABELS = {
-    "harmonyos-guides": "指南",
-    "harmonyos-references": "API 参考",
-    "harmonyos-faqs": "FAQ",
-    "harmonyos-releases": "版本说明",
-    "best-practices": "最佳实践",
-}
+from catalogs import CATALOG_LABELS as TYPE_LABELS  # noqa: E402
 TYPE_CATALOGS = tuple(TYPE_LABELS)
 TYPE_FULL_LABELS = {k: f"{v}（{k}）" for k, v in TYPE_LABELS.items()}
 

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 
+from catalogs import CATALOG_LABELS, CATALOG_OPTIONS  # noqa: E402
+
 import ignores
 
 
@@ -100,11 +102,7 @@ ENCHECK_MODULE = {
                      ("punct", "含标点"), ("url_cn", "链接URL含中文"),
                      ("cn_link", "含中文链接")]},
         {"key": "catalog", "label": "分类", "source": "detail",
-         "options": [("all", "全部"), ("harmonyos-guides", "guides"),
-                     ("harmonyos-references", "references"),
-                     ("harmonyos-faqs", "faqs"),
-                     ("harmonyos-releases", "releases"),
-                     ("best-practices", "best-practices")]},
+         "options": list(CATALOG_OPTIONS)},
         {"key": "dl", "label": "源文档地址包含", "source": "contains",
          "field": "doc_url", "control": "text",
          "placeholder": "如 best-practices 或 avplayer"},

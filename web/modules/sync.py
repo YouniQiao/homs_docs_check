@@ -9,13 +9,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # 分类英文 key → 中文名（未知 key 原样显示）
-CATALOG_LABELS = {
-    "harmonyos-guides": "开发指南",
-    "harmonyos-references": "API 参考",
-    "harmonyos-faqs": "常见问题",
-    "harmonyos-releases": "版本说明",
-    "best-practices": "最佳实践",
-}
+from catalogs import CATALOG_LABELS, CATALOG_OPTIONS  # noqa: E402
 LANG_LABELS = {"cn": "中文", "en": "英文"}
 
 
@@ -97,7 +91,7 @@ SYNC_FILTERS = [
     {"key": "lang", "label": "语言", "source": "detail",
      "options": [("all", "全部"), ("cn", "中文文档"), ("en", "英文文档")]},
     {"key": "catalog", "label": "分类", "source": "detail",
-     "options": [("all", "全部")] + [(k, v) for k, v in CATALOG_LABELS.items()]},
+     "options": list(CATALOG_OPTIONS)},
     {"key": "type", "label": "变更", "source": "item_type",
      "options": [("all", "全部"), ("added", "新增"), ("modified", "修改"),
                  ("deleted", "删除")]},
