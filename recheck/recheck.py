@@ -618,6 +618,8 @@ def main():
 
     summary = {"total": total, "resolved": resolved, "still": still, "gone": gone,
                "ignored": ignored, "rate": rate,
+               # 口径标记：cur=现行窄口径（只统计历史记为问题的链接）；缺省=旧宽口径
+               "rate_scope": "cur",
                "elapsed_sec": round(time.time() - t0), "item_count": len(items)}
     for mk in sel:
         summary[f"{mk}_total"] = sum(by_mod[mk].values())
