@@ -24,6 +24,18 @@
 .sched-card table { border: none; box-shadow: none; }
 .sched-card tr.weekly td { background: #faf7ff; }
 .sched-card tr.weekly td:first-child { font-weight: 600; color: #5b21b6; }
+/* AI 用量卡片 */
+.ai-usage { display: flex; flex-direction: column; gap: 9px; padding: 6px 4px 2px; }
+.ai-gauge { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.ai-g-label { flex: 0 0 72px; color: var(--muted); }
+.ai-g-bar { flex: 1; height: 8px; border-radius: 999px; background: #eef0f6; overflow: hidden; }
+.ai-g-bar i { display: block; height: 100%; border-radius: 999px; transition: width .3s; }
+.ai-g-pct { flex: 0 0 48px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ai-g-reset { flex: 0 0 86px; text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ai-usage-foot { margin-top: 11px; padding-top: 11px; border-top: 1px dashed var(--border);
+                 font-size: 12.5px; color: var(--muted); }
+.ai-usage-foot b { color: var(--text); }
+.ai-stale { color: #c2570a; }
 .sched-note { color: var(--muted); font-size: 13px; padding: 12px 16px; line-height: 1.7; }
 </style>
 
@@ -52,6 +64,30 @@
     {% endif %}
 </div>
 {% endfor %}
+
+{% if ai_usage and ai_usage.ok %}
+<div class="sched">
+    <h2>🤖 AI 用量</h2>
+    <div class="sched-card">
+        <div class="ai-usage">
+            {% for g in ai_usage.gauges %}
+            <div class="ai-gauge">
+                <span class="ai-g-label">{{ g.label }}</span>
+                <span class="ai-g-bar"><i style="width:{{ g.percent }}%;background:{{ g.color }}"></i></span>
+                <span class="ai-g-pct" style="color:{{ g.color }}">{{ g.percent }}%</span>
+                <span class="ai-g-reset">↻ {{ g.reset }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="ai-usage-foot">
+            opencode-go（本机 Hermes 通道） · 本项目累计
+            <b>{{ "{:,}".format(ai_usage.local.calls) }}</b> 次调用 ·
+            <b>{{ ai_usage.local.tokens_h }}</b> tokens
+            {% if ai_usage.stale %}<span class="ai-stale">（额度为缓存值）</span>{% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div class="sched">
     <h2>⏰ 定时任务</h2>

@@ -43,3 +43,5 @@ sysmerge/ignore.db-*
 sysmerge/kit_map.json
 backups/
 .auth.env
+.ai.env
+.ai_usage_cache.json

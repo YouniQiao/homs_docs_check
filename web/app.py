@@ -63,7 +63,12 @@ def create_app() -> Flask:
 
     @app.route("/")
     def home():
-        return render_template("home.html")
+        try:
+            from ai.usage import usage_card
+            ai_usage = usage_card()
+        except Exception:  # noqa: BLE001 - AI 未配置/接口异常都不能影响首页
+            ai_usage = None
+        return render_template("home.html", ai_usage=ai_usage)
 
     @app.after_request
     def no_cache(resp):
