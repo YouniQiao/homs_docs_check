@@ -28,9 +28,13 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import glob
+import os
+import subprocess
 import re
 import sys
 import time
+from datetime import datetime
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -81,9 +85,54 @@ def _is_vintage(url: str) -> bool:
     return bool(m and re.search(r"-V\d+$", m.group(1)))
 
 
+# ── 软 404 复核：SPA 站点可能"HTTP 404 但页面可读"，只有真正渲染才能分辨 ──
+_CHROME_PATTERNS = (
+    os.environ.get("CHROME_BIN", ""),
+    os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux64/chrome"),
+    os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux/chrome"),
+    "/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome",
+)
+
+
+def _chrome_bin() -> str | None:
+    for pat in _CHROME_PATTERNS:
+        if not pat:
+            continue
+        hits = [p for p in glob.glob(pat) if os.path.isfile(p) and os.access(p, os.X_OK)]
+        if hits:
+            return sorted(hits)[-1]
+    return None
+
+
+def _browser_ok(url: str, timeout: int = 25) -> bool | None:
+    """渲染页面判断是否可读。True=有正文, False=空壳/没找到, None=无法判断（保持原判）。"""
+    exe = _chrome_bin()
+    if not exe:
+        return None
+    try:
+        out = subprocess.run(
+            [exe, "--headless", "--no-sandbox", "--disable-gpu",
+             "--disable-dev-shm-usage", "--virtual-time-budget=9000",
+             "--dump-dom", url],
+            capture_output=True, timeout=timeout, text=True, errors="ignore")
+    except Exception:
+        return None
+    dom = out.stdout or ""
+    if len(dom) < 2000:                 # 没拿到页面，不下结论
+        return None
+    # 判据：有 <h1> 且标题文字够长。（华为 404 页的 <h1> 内容就是 "404"，必须排除）
+    m = re.search(r"<h1[^>]*>(.*?)</h1>", dom, re.S | re.I)
+    if not m:
+        return False
+    text = re.sub(r"<[^>]+>", "", m.group(1)).strip()
+    return len(text) >= 5
+
+
 def _bucket(status: str) -> str:
     """状态分桶：ok / dead / blocked / server / unreachable。"""
     s = str(status)
+    if s == "SOFT_OK":       # 软 404：HTTP 404 但浏览器可读 → 视为正常
+        return "ok"
     if s.isdigit():
         c = int(s)
         if 200 <= c < 400:
@@ -252,6 +301,10 @@ def main() -> None:
     ap.add_argument("--int-delay", type=float, default=0.5, help="站内链接请求间隔(秒)")
     ap.add_argument("--timeout", type=int, default=12, help="HTTP 超时(秒)")
     ap.add_argument("--limit", type=int, default=0, help="最多文档数(调试)")
+    ap.add_argument("--module-key", default="linkcheck",
+                    help="写入 runs.module_key；全量检查传 linkcheck_full")
+    ap.add_argument("--no-browser", action="store_true",
+                    help="跳过软 404 浏览器复核（默认对 404 用无头浏览器复验）")
     args = ap.parse_args()
 
     db = IndexDB(BASE_DIR / "index.db")
@@ -367,6 +420,28 @@ def main() -> None:
         db.set_url_cache(u, s)
     db.commit()
 
+    # 3.5 软 404 复核：对 404/410 用无头浏览器渲染一次，能出 <h1> 的判为可读
+    if not args.no_browser:
+        suspects = [u for u, s in status.items() if _bucket(s) == "dead"]
+        if suspects:
+            exe = _chrome_bin()
+            if not exe:
+                print("   [复核] 未找到可用的无头浏览器，跳过（可用 CHROME_BIN 指定）", flush=True)
+            else:
+                print(f"   [复核] {len(suspects)} 个 404 用无头浏览器验证…", flush=True)
+                soft = 0
+                for i, u in enumerate(suspects, 1):
+                    r = _browser_ok(u)
+                    if r is True:
+                        status[u] = "SOFT_OK"
+                        db.set_url_cache(u, "SOFT_OK")
+                        soft += 1
+                    if i % 10 == 0 or i == len(suspects):
+                        print(f"      复核进度: {i}/{len(suspects)}（软 404 {soft} 个）", flush=True)
+                db.commit()
+                print(f"   [复核] 完成：{soft}/{len(suspects)} 个是软 404（页面实际可读，已从断链中剔除）",
+                      flush=True)
+
     def get_status(u: str) -> str:
         if u in status:
             return status[u]
@@ -442,6 +517,7 @@ def main() -> None:
         "vintage": sum(p["vintage_count"] for p in problems),
         "anchor_miss": sum(p["anchor_miss_count"] for p in problems),
         "urls_checked": len(status),
+        "soft_ok": sum(1 for s in status.values() if s == "SOFT_OK"),
     }
     print(f"   统计: {summary['total']} 篇问题 | 断链 {summary['dead']} | "
           f"被拒 {summary['blocked']} | 服务端异常 {summary['server']} | "
@@ -453,7 +529,9 @@ def main() -> None:
         print("   [dry-run] 结束（未写库）", flush=True)
         return
 
-    run_id = db.start_run("linkcheck")
+    run_id = db.start_run(
+        args.module_key,
+        started_at=datetime.fromtimestamp(t0).isoformat(timespec="seconds"))
     for p in problems:
         db.add_item(run_id, p["doc_key"], "dead", p)
     db.finish_run(run_id, {**summary, "elapsed_sec": round(time.time() - t0)})
