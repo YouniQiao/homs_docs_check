@@ -23,6 +23,7 @@ import json
 import re
 import sys
 import time
+from datetime import datetime
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -642,7 +643,9 @@ def main():
         print("   [dry-run] 未写库", flush=True)
         return
 
-    run_id = db.start_run("recheck")
+    run_id = db.start_run(
+        "recheck",
+        started_at=datetime.fromtimestamp(t0).isoformat(timespec="seconds"))
     for k, itype, detail in items:
         db.add_item(run_id, k, itype, detail)
     db.finish_run(run_id, summary)

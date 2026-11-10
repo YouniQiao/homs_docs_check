@@ -4,12 +4,13 @@ from .sync import SYNC_MODULE
 from .ocr import OCR_MODULE
 from .encheck import ENCHECK_MODULE
 from .linkcheck import LINKCHECK_MODULE
+from .linkcheck_full import LINKCHECK_FULL_MODULE
 from .imgnorm import IMGNORM_MODULE
 from .recheck import RECHECK_MODULE
 from .sysmerge import SYSMERGE_MODULE
 
 MODULES = [SYNC_MODULE, OCR_MODULE, ENCHECK_MODULE, LINKCHECK_MODULE, IMGNORM_MODULE,
-           RECHECK_MODULE, SYSMERGE_MODULE]
+           RECHECK_MODULE, SYSMERGE_MODULE, LINKCHECK_FULL_MODULE]
 
 # 独立页（没有 runs/items 框架），但同样出现在顶栏菜单与首页分组里
 EXTRA_MODULES = [
@@ -49,8 +50,10 @@ HOME_GROUPS = [
     # 专项整改（用户 2026-09 新增）：后续放入的卡片按以下约定——
     #   ① 不进顶栏菜单（模块标 in_nav: False，或放 EXTRA_MODULES）
     #   ② 不接定时任务（不加 cron、不进日报）
+    #      ⚠ 例外：linkcheck_full（全量链接健康检查）按用户要求每天 6:00 跑一次，
+    #        有自己的 cron，但**仍不进日报**（send_daily.py 不收录）。
     # 卡片陆续加入时，把 key 追加到下面这个列表即可。
-    ("专项整改", ["sysmerge"]),
+    ("专项整改", ["sysmerge", "linkcheck_full"]),
 ]
 
 

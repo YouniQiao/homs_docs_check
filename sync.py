@@ -29,6 +29,11 @@ import requests
 
 BASE_DIR = Path(__file__).resolve().parent
 
+# 删除保护：单次判定删除量超过阈值时整批跳过（索引与文件都保留），需人工确认
+MASS_DELETE_MIN = 30      # 篇数
+MASS_DELETE_RATIO = 0.01  # 或占当前同步范围的 1%
+DELETED_MD_DIR = BASE_DIR / "backups" / "deleted-md"  # 下架文档的本地文件移到这里，便于回滚
+
 # thread-local session：每个 worker 线程复用连接池，避免并发下新建 TCP 连接
 _local = threading.local()
 
@@ -210,7 +215,7 @@ def _check_updated(d: dict, old_display_time: str) -> tuple[dict, dict] | None:
 
 def sync(config: dict, db: IndexDB, catalogs: list[str], langs: list[str],
          is_full: bool = False, dry_run: bool = False, delay: float = 0.1,
-         workers: int = 8):
+         workers: int = 8, purge_deleted: bool = False):
     """执行同步。返回 (added, modified, deleted)。"""
     print(f"🌐 开始{'全量' if is_full else '增量'}同步", flush=True)
     print(f"   catalogs: {catalogs}", flush=True)
@@ -244,18 +249,43 @@ def sync(config: dict, db: IndexDB, catalogs: list[str], langs: list[str],
     run_id = db.start_run("sync")
     added = modified = deleted = 0
 
-    # 3. 处理删除
-    for key in sorted(deleted_keys):
-        lang, catalog, rel = key.split("|")
-        old = db.get_doc(key)
-        db.mark_deleted(key)
-        if not is_full:
-            db.add_item(run_id, key, "deleted", {
-                "lang": lang, "catalog": catalog,
-                "title": old.get("title", "") if old else rel,
-                "url": old.get("url", "") if old else doc_url(lang, catalog, rel),
-            })
-        deleted += 1
+    # 3. 处理删除（索引 + 本地 md 一起删；images 目录按 catalog 共享，不动）
+    #    保险：单次删除量过大时整批跳过，索引与文件都保留，下次同步会再次判定 ——
+    #    避免官方目录接口返回不完整数据时一次性删掉大量文件。
+    mass_delete = bool(deleted_keys) and not purge_deleted and (
+        len(deleted_keys) > MASS_DELETE_MIN
+        or (len(deleted_keys) >= 5
+            and len(deleted_keys) > len(local_keys_in_scope) * MASS_DELETE_RATIO)
+    )
+    if mass_delete:
+        print(f"   ⚠️  本次判定删除 {len(deleted_keys)} 篇"
+              f"（>{MASS_DELETE_MIN} 篇或 >{MASS_DELETE_RATIO:.0%}），已整批跳过；"
+              f"确认官方确实下架后加 --purge-deleted 重跑", flush=True)
+    else:
+        for key in sorted(deleted_keys):
+            lang, catalog, rel = key.split("|")
+            old = db.get_doc(key)
+            file_deleted = False
+            lp = (old.get("local_path") if old else "") or ""
+            if lp:
+                md_file = BASE_DIR / lp
+                try:
+                    if md_file.is_file():
+                        dest = DELETED_MD_DIR / time.strftime("%Y-%m-%d") / lp
+                        dest.parent.mkdir(parents=True, exist_ok=True)
+                        md_file.replace(dest)
+                        file_deleted = True
+                except OSError as e:
+                    print(f"   ⚠️  删除本地文件失败 {lp}: {e}", flush=True)
+            db.mark_deleted(key)
+            if not is_full:
+                db.add_item(run_id, key, "deleted", {
+                    "lang": lang, "catalog": catalog,
+                    "title": old.get("title", "") if old else rel,
+                    "url": (old.get("url") if old else "") or doc_url(lang, catalog, rel),
+                    "file_deleted": file_deleted,
+                })
+            deleted += 1
 
     # 4. 处理新增
     to_fetch = []  # (doc_dict, change_type, value_or_None)
@@ -331,7 +361,8 @@ def sync(config: dict, db: IndexDB, catalogs: list[str], langs: list[str],
                           f"(added={added} modified={modified})", flush=True)
 
     db.commit()
-    db.finish_run(run_id, {"added": added, "modified": modified, "deleted": deleted})
+    db.finish_run(run_id, {"added": added, "modified": modified, "deleted": deleted,
+                             "delete_skipped": len(deleted_keys) if mass_delete else 0})
     print(f"✅ 同步完成: 新增 {added} | 修改 {modified} | 删除 {deleted}", flush=True)
     return added, modified, deleted
 
@@ -342,6 +373,8 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="只对比不下载")
     parser.add_argument("--catalog", action="append", help="限定 catalog（可多次）")
     parser.add_argument("--lang", action="append", help="限定语言（可多次）")
+    parser.add_argument("--purge-deleted", action="store_true",
+                        help="单次删除量很大时也照删本地文件（默认跳过）")
     parser.add_argument("--workers", type=int, default=None,
                         help="并发线程数（默认取 config.yaml 的 workers）")
     args = parser.parse_args()
@@ -355,7 +388,8 @@ def main():
     db = IndexDB(str(BASE_DIR / config["db_path"]))
     try:
         sync(config, db, catalogs, langs, is_full=args.full,
-             dry_run=args.dry_run, delay=delay, workers=workers)
+             dry_run=args.dry_run, delay=delay, workers=workers,
+             purge_deleted=args.purge_deleted)
     finally:
         db.close()
 

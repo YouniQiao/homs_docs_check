@@ -360,10 +360,11 @@ class IndexDB:
                 time.sleep(2)
 
     # ---- runs（通用任务历史）----
-    def start_run(self, module_key: str) -> int:
+    def start_run(self, module_key: str, started_at: str = None) -> int:
+        """创建 run 记录。started_at 可传真实开始时间（脚本先干活、后落库的场景）。"""
         cur = self._exec_retry(
             "INSERT INTO runs (module_key, started_at, status) VALUES (?,?, 'running')",
-            (module_key, datetime.now().isoformat(timespec="seconds")),
+            (module_key, started_at or datetime.now().isoformat(timespec="seconds")),
         )
         self.commit()
         assert cur is not None
