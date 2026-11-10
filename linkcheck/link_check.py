@@ -334,6 +334,10 @@ def main() -> None:
                     help="伪 200 复核：渲染站内 200 链接，识别「HTTP 200 但页面已 404」")
     ap.add_argument("--render-limit", type=int, default=600,
                     help="伪 200 复核单次最多渲染数（0=不限）")
+    ap.add_argument("--render-workers", type=int, default=8,
+                    help="伪200渲染并发（常驻浏览器数，默认 8）")
+    ap.add_argument("--render-timeout", type=float, default=25,
+                    help="单个链接渲染等待上限（秒，出结论即提前收工）")
     ap.add_argument("--render-ttl", type=int, default=7,
                     help="同一 URL 多少天内不重复渲染复核")
     ap.add_argument("--no-browser", action="store_true",
@@ -492,6 +496,8 @@ def main() -> None:
                 if not _u or _u in seen_c:
                     continue
                 seen_c.add(_u)
+                if "/doc/" not in _u:        # 非文档页（首页/codelabs/AGC 控制台等）不渲染
+                    continue
                 _s = status.get(_u) or db.get_url_cache(_u)
                 if _s and _bucket(_s) == "ok":
                     cand.append(_u)
@@ -503,32 +509,68 @@ def main() -> None:
         rows_total = len(todo)
         if args.render_limit and len(todo) > args.render_limit:
             todo = todo[:args.render_limit]
-        exe = _chrome_bin()
-        if not exe:
-            print("   [伪200] 未找到可用浏览器，跳过（可用 CHROME_BIN 指定）", flush=True)
-        elif todo:
+        # 用 linkcheck/cdp_render.py：常驻浏览器 + 主动轮询，出结论即收工
+        # （--dump-dom 在华为站会等网络空闲，长挂起请求的页面必然超时 → 大量 unknown）
+        _here = str(Path(__file__).resolve().parent)
+        if _here not in sys.path:
+            sys.path.insert(0, _here)
+        try:
+            import cdp_render
+        except Exception as _e:  # noqa: BLE001
+            cdp_render = None
+            print(f"   [伪200] CDP 渲染器不可用（{_e}），跳过", flush=True)
+        if cdp_render is not None and todo:
             if rows_total > len(todo):
                 print(f"   [伪200] 候选 {rows_total} 个，本次只跑 {len(todo)} 个"
                       f"（--render-limit 可调，其余下次继续）", flush=True)
-            print(f"   [伪200] 渲染复核 {len(todo)} 个站内 200 链接（串行，约 5s/个）…", flush=True)
+            workers = max(1, args.render_workers)
             stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            print(f"   [伪200] CDP 渲染复核 {len(todo)} 个站内 200 链接"
+                  f"（{workers} 个常驻浏览器，超时 {args.render_timeout:g}s）…", flush=True)
             pd_dead = pd_unknown = 0
-            for i, u in enumerate(todo, 1):
-                v = _render_verdict(exe, u)
-                db._conn.execute(
-                    "INSERT OR REPLACE INTO render_cache(url,verdict,checked_at) VALUES (?,?,?)",
-                    (u, v, stamp))
+            i = 0
+            import queue as _queue
+            import threading as _threading
+            _q: "_queue.Queue" = _queue.Queue()
+
+            def _run_render() -> None:
+                try:
+                    cdp_render.render_batch(
+                        todo, workers=workers, timeout=args.render_timeout,
+                        progress=lambda r: _q.put(r))
+                except Exception as _ex:  # noqa: BLE001
+                    _q.put({"error": str(_ex)})
+                finally:
+                    _q.put({"done": True})
+
+            _th = _threading.Thread(target=_run_render, daemon=True)
+            _th.start()
+            while True:
+                item = _q.get()
+                if item.get("done"):
+                    break
+                if item.get("error"):
+                    print(f"   [伪200] 渲染出错：{item['error']}", flush=True)
+                    continue
+                u, v = item["url"], item["verdict"]
+                i += 1
+                if not args.dry_run:
+                    db._conn.execute(
+                        "INSERT OR REPLACE INTO render_cache(url,verdict,checked_at) "
+                        "VALUES (?,?,?)", (u, v, stamp))
+                    if v == "dead":
+                        db.set_url_cache(u, "PSEUDO_DEAD")
                 if v == "dead":
                     status[u] = "PSEUDO_DEAD"
-                    db.set_url_cache(u, "PSEUDO_DEAD")
                     pd_dead += 1
                 elif v == "unknown":
                     pd_unknown += 1
                 if i % 20 == 0 or i == len(todo):
-                    db._conn.commit()
-                    db.commit()
-                    print(f"      伪200 进度: {i}/{len(todo)}（伪200 {pd_dead} / 判不了 {pd_unknown}）",
-                          flush=True)
+                    if not args.dry_run:
+                        db._conn.commit()
+                        db.commit()
+                    print(f"      伪200 进度: {i}/{len(todo)}"
+                          f"（伪200 {pd_dead} / 判不了 {pd_unknown}）", flush=True)
             db._conn.commit()
             db.commit()
             print(f"   [伪200] 完成：{pd_dead}/{len(todo)} 个是伪 200（页面已失效），"
