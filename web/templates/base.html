@@ -218,6 +218,7 @@
             {% for m in nav_modules %}
             <a href="/{{ m.key }}/" class="{{ 'active' if module and module.key == m.key else '' }}">{{ m.icon }} {{ m.nav_name or m.name }}</a>
             {% endfor %}
+            <a class="right {{ 'active' if request.path.startswith('/about') else '' }}" href="/about">📖 说明</a>
             <a class="right {{ 'active' if request.path.startswith('/subscribe') else '' }}" href="/subscribe">📬 邮件订阅</a>
             {% if auth_enabled %}
             {% if current_user %}

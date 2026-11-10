@@ -28,6 +28,15 @@ def _level(pct: float) -> tuple[str, str]:
     return "ok", "#128c4a"
 
 
+def _rem_color(rem: float) -> str:
+    """按**剩余**比例着色：余量越少越警示。"""
+    if rem <= 5:
+        return "#d13438"
+    if rem <= 20:
+        return "#c2570a"
+    return "#128c4a"
+
+
 def _fmt_reset(iso: str) -> str:
     try:
         dt = datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(_CST)
@@ -86,7 +95,9 @@ def local_usage() -> dict:
     tin = sum(v["tokens_in"] for v in s.values())
     tout = sum(v["tokens_out"] for v in s.values())
     return {"calls": calls, "tokens_in": tin, "tokens_out": tout,
-            "tokens": tin + tout, "tokens_h": _fmt_tokens(tin + tout), "kinds": s}
+            "tokens": tin + tout, "tokens_h": _fmt_tokens(tin + tout),
+            "tokens_in_h": _fmt_tokens(tin), "tokens_out_h": _fmt_tokens(tout),
+            "kinds": s}
 
 
 def usage_card() -> dict:
@@ -102,8 +113,11 @@ def usage_card() -> dict:
             continue
         pct = float(pct)
         _lvl, color = _level(pct)
-        gauges.append({"key": key, "label": label, "percent": round(pct, 1),
-                       "color": color, "reset": _fmt_reset(d.get("resetsAt", "")),
+        rem = round(max(0.0, 100.0 - pct), 1)
+        gauges.append({"key": key, "label": label,
+                       "remaining": rem, "rem_color": _rem_color(rem),
+                       "percent": round(pct, 1), "color": color,
+                       "reset": _fmt_reset(d.get("resetsAt", "")),
                        "status": d.get("status", "")})
     return {"ok": bool(gauges), "stale": bool(p.get("stale")), "error": p.get("error", ""),
             "gauges": gauges, "local": local_usage(), "ts": time.time()}

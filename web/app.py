@@ -61,14 +61,21 @@ def create_app() -> Flask:
     register_auth(app, DB_PATH)
     register_me(app, DB_PATH)
 
-    @app.route("/")
-    def home():
+    def _ai_usage():
+        """AI 额度卡片数据；AI 未配置或接口异常都不影响页面渲染。"""
         try:
             from ai.usage import usage_card
-            ai_usage = usage_card()
-        except Exception:  # noqa: BLE001 - AI 未配置/接口异常都不能影响首页
-            ai_usage = None
-        return render_template("home.html", ai_usage=ai_usage)
+            return usage_card()
+        except Exception:  # noqa: BLE001
+            return None
+
+    @app.route("/")
+    def home():
+        return render_template("home.html")
+
+    @app.route("/about")
+    def about():
+        return render_template("about.html", ai_usage=_ai_usage())
 
     @app.after_request
     def no_cache(resp):

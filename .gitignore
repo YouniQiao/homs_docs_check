@@ -45,3 +45,7 @@ backups/
 .auth.env
 .ai.env
 .ai_usage_cache.json
+
+# 历史改动前的临时备份（不入库）
+*.bak-*
+*.bak.*
