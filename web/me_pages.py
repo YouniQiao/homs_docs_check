@@ -672,7 +672,7 @@ def _item_summary(mk: str, detail: dict, item_type: str, probs: list) -> tuple[s
         extra = " · ".join(urls[:2])
     elif mk == "encheck":
         vals = []
-        for f, lab in (("hanzi", "汉字"), ("punct", "标点")):
+        for f, lab in (("hanzi", "汉字"),):
             v = detail.get(f)
             if v:
                 vals.append(f"{lab}：{' '.join(str(x) for x in v[:12])}"

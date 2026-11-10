@@ -2,10 +2,10 @@
 
 执行脚本：encheck/en_check.py（--full 全量 / 默认增量）。
 每篇文档一个 item：item_type = problem / clean / error；
-类型列按 multi_badge 四项独立计数渲染多标签（含汉字 / 含标点 / 链接URL含中文 / 含中文链接），
+类型列按 multi_badge 三项独立计数渲染多标签（含汉字 / 链接URL含中文 / 含中文链接），
 不存在"两者都有"这种组合类型。
 detail: doc_key, title, doc_url, catalog,
-        hanzi, hanzi_count, punct, punct_count,
+        hanzi, hanzi_count,
         url_cn_chars, url_cn_char_count, url_cn_links, cn_links, cn_link_count
 """
 
@@ -39,7 +39,7 @@ def _encheck_context(db) -> dict:
     except Exception:
         checked_total = len(latest)
 
-    stats = {"checked": checked_total, "hanzi": 0, "punct": 0, "url_cn": 0,
+    stats = {"checked": checked_total, "hanzi": 0, "url_cn": 0,
              "cn_link": 0, "clean": 0, "errors": 0}
     rules = ignores.active_map(db)
     for item_type, detail_json in latest.values():
@@ -54,9 +54,6 @@ def _encheck_context(db) -> dict:
         hit = False
         if d.get("hanzi_count", 0) > 0:
             stats["hanzi"] += 1
-            hit = True
-        if d.get("punct_count", 0) > 0:
-            stats["punct"] += 1
             hit = True
         if d.get("url_cn_char_count", 0) > 0:
             stats["url_cn"] += 1
@@ -78,28 +75,26 @@ ENCHECK_MODULE = {
     "name": "英文文档检查",
     "nav_name": "英文文档检查",    # 顶栏菜单名（用户 2026-09 定）
     "icon": "🌐",
-    "description": "检查英文文档中的中文字符与中文跳转链接",
+    "description": "检查英文文档中的中文汉字与中文跳转链接",
     "runs_title": "每日增量内容英文文档检查记录",
     "summary_fields": [("total", "检查文档"), ("hanzi", "含汉字"),
                        ("url_cn", "链接URL含中文"), ("cn_link", "含中文链接")],
     "detail_summary_fields": [("total", "检查文档"), ("hanzi", "含汉字"),
-                              ("punct", "含标点"),
                               ("url_cn", "链接URL含中文"),
                               ("cn_link", "含中文链接"),
                               ("errors", "错误")],
     "item_columns": [("catalog", "分类"),
                      ("hanzi", "中文汉字"),
-                     ("punct", "中文标点"),
                      ("url_cn_links", "链接URL中文", "link_list"),
                      ("cn_links", "中文链接", "link_list"),
                      ("url", "源文档")],
     "filters": [
         {"key": "kit", "label": "Kit", "source": "kit", "default": "all", "options": []},
         {"key": "type", "label": "问题", "source": "count",
-         "fields": {"hanzi": "hanzi_count", "punct": "punct_count",
+         "fields": {"hanzi": "hanzi_count",
                     "url_cn": "url_cn_char_count", "cn_link": "cn_link_count"},
          "options": [("all", "全部"), ("hanzi", "含汉字"),
-                     ("punct", "含标点"), ("url_cn", "链接URL含中文"),
+                     ("url_cn", "链接URL含中文"),
                      ("cn_link", "含中文链接")]},
         {"key": "catalog", "label": "分类", "source": "detail",
          "options": list(CATALOG_OPTIONS)},
@@ -110,7 +105,6 @@ ENCHECK_MODULE = {
     # 类型列多标签渲染：(detail 计数字段, badge 样式, 标签文本)；全为 0 显示"正常"
     "multi_badge": [
         ("hanzi_count", "badge-failed", "含汉字"),
-        ("punct_count", "badge-modified", "含标点"),
         ("url_cn_char_count", "badge-info", "链接URL含中文"),
         ("cn_link_count", "badge-added", "含中文链接"),
     ],

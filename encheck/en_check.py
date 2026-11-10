@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""英文文档检查：检测中文字符（汉字 + 中文标点）与中文跳转链接。
+"""英文文档检查：检测正文中文汉字与中文跳转链接（不查中文标点）。
 
 用法：
   python3 en_check.py                # 增量：基于 sync 最新 en 变更
@@ -33,7 +33,7 @@ DATA_DIR = BASE_DIR / "data"
 
 # 中文汉字（基本 CJK 统一表意文字）
 CN_HANZI_RE = re.compile(r"[\u4e00-\u9fff]")
-# 中文标点：除汉字外的中文标点（顿号句号、全角逗号句号问号叹号冒号分号、括号、书名号、引号、省略号破折号间隔号等）
+# 中文标点：**只用于识别「链接 URL 里含中文」**（正文标点检查已按用户要求下线）
 CN_PUNCT_RE = re.compile(
     "[\u3001\u3002"                        # 、。
     "\uff0c\uff0e\uff01\uff1f\uff1a\uff1b"  # ，．！？：；
@@ -60,17 +60,17 @@ def _strip_urls(content: str) -> str:
 
 
 def check_md(content: str) -> tuple:
-    """返回 (正文汉字去重列表, 汉字数, 正文标点去重列表, 标点数,
+    """返回 (正文汉字去重列表, 汉字数, [] , 0,
     URL中文去重列表, URL中文数, URL含中文的链接列表, 中文链接列表, 中文链接数)。
 
-    正文汉字/标点：md 正文（已挖掉 URL）里的中文，汉字与标点分开统计。
+    正文汉字：md 正文（已挖掉 URL）里的中文汉字。
+    标点：**已下线**，第 3、4 位固定返回 [] / 0（保留元组形状，调用方无需改）。
     URL 中文：链接 URL 里的中文（如官网英文链接锚点 #概述）——也是本地化问题。
     """
     cleaned = _strip_urls(content)
     hanzi = CN_HANZI_RE.findall(cleaned)
     hz_unique = sorted(set(hanzi))
-    punct = CN_PUNCT_RE.findall(cleaned)
-    pt_unique = sorted(set(punct))
+    pt_unique: list[str] = []
     url_chars: list[str] = []
     url_cn_links: list[dict] = []
     cn_links: list[dict] = []
@@ -86,7 +86,7 @@ def check_md(content: str) -> tuple:
         url_chars.extend(CN_HANZI_RE.findall(m.group(0)))
         url_chars.extend(CN_PUNCT_RE.findall(m.group(0)))
     url_unique = sorted(set(url_chars))
-    return (hz_unique, len(hanzi), pt_unique, len(punct),
+    return (hz_unique, len(hanzi), pt_unique, 0,
             url_unique, len(url_chars), url_cn_links, cn_links, len(cn_links))
 
 
@@ -185,7 +185,7 @@ def main():
         # 无可检查文档：仍记录一条空 run，便于确认定时任务已执行
         run_id = _write_with_retry(db, db.start_run, "encheck")
         _write_with_retry(db, db.finish_run, run_id, {
-            "total": 0, "hanzi": 0, "punct": 0, "url_cn": 0,
+            "total": 0, "hanzi": 0, "url_cn": 0,
             "cn_link": 0, "clean": 0, "errors": 0,
             "elapsed_sec": 0, "note": "无新增英文文档变更"})
         db.close()
@@ -196,7 +196,7 @@ def main():
     t0 = time.time()
     batches = [todo[i:i + args.batch_size]
                for i in range(0, len(todo), args.batch_size)]
-    summary = {"total": 0, "hanzi": 0, "punct": 0, "url_cn": 0, "cn_link": 0,
+    summary = {"total": 0, "hanzi": 0, "url_cn": 0, "cn_link": 0,
                "clean": 0, "errors": 0}
     results: list[tuple] = []
     done = 0
@@ -212,13 +212,11 @@ def main():
                 else:
                     if hc > 0:
                         summary["hanzi"] += 1
-                    if pc > 0:
-                        summary["punct"] += 1
                     if cu > 0:
                         summary["url_cn"] += 1
                     if lc > 0:
                         summary["cn_link"] += 1
-                    if not (hc or pc or cu or lc):
+                    if not (hc or cu or lc):
                         summary["clean"] += 1
                 results.append(r)
             done += 1
@@ -239,7 +237,7 @@ def main():
                         "doc_key": doc_key, "lang": "en", "error": err,
                     })
                     continue
-                item_type = "problem" if (hc or pc or cu or lc) else "clean"
+                item_type = "problem" if (hc or cu or lc) else "clean"
                 if item_type == "clean":
                     continue  # 不记录/不显示正常文档（summary 仍统计数量）
                 d = db.get_doc(doc_key)
@@ -251,8 +249,6 @@ def main():
                     "doc_url": d.get("url", "") if d else "",
                     "hanzi": hz,             # 正文汉字（去重）
                     "hanzi_count": hc,       # 正文汉字总数
-                    "punct": pt,             # 正文标点（去重）
-                    "punct_count": pc,       # 正文标点总数
                     "url_cn_chars": uu,      # 链接 URL 中文字符（去重）
                     "url_cn_char_count": cu,  # URL 中文总数
                     "url_cn_links": url_links,  # URL 含中文的链接（定位用）
@@ -267,7 +263,7 @@ def main():
     summary["elapsed_sec"] = round(elapsed)
     _write_with_retry(db, db.finish_run, run_id, summary)
     print(f"✅ 检查完成: {summary['total']} 篇 | 含汉字 {summary['hanzi']} | "
-          f"含标点 {summary['punct']} | 链接URL含中文 {summary['url_cn']} | "
+          f"链接URL含中文 {summary['url_cn']} | "
           f"含中文链接 {summary['cn_link']} | 正常 {summary['clean']} | "
           f"错误 {summary['errors']} | 耗时 {elapsed:.0f} 秒", flush=True)
     db.close()

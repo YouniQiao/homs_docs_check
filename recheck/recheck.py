@@ -44,7 +44,7 @@ import ignores  # noqa: E402
 
 # verdict 的 ptype / 计数字段 → 忽略 kind
 LINK_KIND = {"断链": "dead", "误链历史版本": "vintage", "锚点失效": "anchor_miss"}
-EN_KIND = {"hanzi_count": "hanzi", "punct_count": "punct",
+EN_KIND = {"hanzi_count": "hanzi",
            "url_cn_char_count": "url_cn", "cn_link_count": "cn_link"}
 DATA_DIR = BASE_DIR / "data"
 
@@ -300,10 +300,10 @@ def verdicts_encheck(db, tg, meta, args, rules) -> list:
             out.append(rec)
             continue
         res = check_md(content)
-        counts = {"hanzi_count": res[1], "punct_count": res[3],
+        counts = {"hanzi_count": res[1],
                   "url_cn_char_count": res[5], "cn_link_count": res[8]}
         fresh[dk] = res
-        pairs = (("hanzi_count", "含汉字"), ("punct_count", "含标点"),
+        pairs = (("hanzi_count", "含汉字"),
                  ("url_cn_char_count", "链接URL含中文"), ("cn_link_count", "含中文链接"))
         hit = [k for k, _l in pairs if counts[k] > 0]
 
@@ -523,7 +523,6 @@ def build_items(verdicts: list, meta: dict) -> list[tuple]:
             "doc_key": dk, "lang": lang, "catalog": catalog, "title": title, "doc_url": url,
             "url": url,
             "hanzi": res[0], "hanzi_count": res[1],
-            "punct": res[2], "punct_count": res[3],
             "url_cn_chars": res[4], "url_cn_char_count": res[5],
             "url_cn_links": res[6], "cn_links": res[7], "cn_link_count": res[8],
         }

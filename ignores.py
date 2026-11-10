@@ -19,7 +19,6 @@ KINDS: dict[str, list[tuple]] = {
                   ("anchor_miss", "锚点失效", "anchor_miss_count", "anchor_miss_links"),
                   ],
     "encheck": [("hanzi", "含汉字", "hanzi_count", None),
-                ("punct", "含标点", "punct_count", None),
                 ("url_cn", "链接URL含中文", "url_cn_char_count", "url_cn_links"),
                 ("cn_link", "含中文链接", "cn_link_count", "cn_links")],
     "ocr": [("has_cn", "图片含中文", None, None)],
@@ -183,7 +182,7 @@ def item_problems(module_key: str, detail: dict, item_type: str = "") -> list[di
                     out.append({"kind": kind, "kind_label": label, "target": url,
                                 "doc_key": "", "label": text or url, "inline": True})
             elif d.get(cnt_f, 0) > 0:
-                # 含汉字 / 含标点 / 链接URL含中文：文档级（目标 = 文档）
+                # 含汉字 / 链接URL含中文：文档级（目标 = 文档）
                 out.append({"kind": kind, "kind_label": label, "target": dk,
                             "doc_key": "", "label": "本文档"})
     elif module_key == "ocr":

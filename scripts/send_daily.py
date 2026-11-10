@@ -127,11 +127,11 @@ def _recount_run(db, mk: str, run_id: int, rules: dict) -> tuple[dict, int]:
         for _t, d in items:
             if d.get("doc_key"):
                 latest[d["doc_key"]] = d
-        out = {"hanzi": 0, "punct": 0, "url_cn": 0, "cn_link": 0}
+        out = {"hanzi": 0, "url_cn": 0, "cn_link": 0}
         ign = 0
         for d in latest.values():
             d2, i2, _r = ignores.strip("encheck", d, rules)
-            for f, key in (("hanzi_count", "hanzi"), ("punct_count", "punct"),
+            for f, key in (("hanzi_count", "hanzi"),
                            ("url_cn_char_count", "url_cn"), ("cn_link_count", "cn_link")):
                 if d2.get(f, 0) > 0:
                     out[key] += 1
