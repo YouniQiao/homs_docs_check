@@ -104,6 +104,21 @@ def _worker(batch: list[tuple]) -> list[tuple]:
     return results
 
 
+def _ai_followup(run_id: int, limit: int) -> None:
+    """OCR 跑完后对英文文档图做 AI 判定；任何异常只告警，不影响 OCR 结果。"""
+    try:
+        sys.path.insert(0, str(BASE_DIR / "scripts"))
+        import ai_review_ocr
+
+        res = ai_review_ocr.run_for(run_id, limit=limit, workers=4, only_missing=True)
+        if res.get("skipped"):
+            print(f"   [AI] 跳过：{res['skipped']}", flush=True)
+        elif not res.get("total"):
+            print("   [AI] 本次没有需要判定的英文文档图", flush=True)
+    except Exception as ex:  # noqa: BLE001
+        print(f"   [AI] 复核失败（不影响 OCR 结果）：{ex}", flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description="OCR 图片检查（识别文字）")
     parser.add_argument("--full", action="store_true", help="全量扫描所有图片")
@@ -111,6 +126,10 @@ def main():
     parser.add_argument("--batch-size", type=int, default=16, help="每批图片数")
     parser.add_argument("--dry-run", action="store_true", help="只统计不执行")
     parser.add_argument("--force", action="store_true", help="忽略去重，强制重跑")
+    parser.add_argument("--no-ai", action="store_true",
+                        help="跑完不做 AI 复核（默认对英文文档图做 AI 判定）")
+    parser.add_argument("--ai-limit", type=int, default=500,
+                        help="AI 复核最多判定多少条（0=不限，默认 500）")
     parser.add_argument("--limit", type=int, default=0,
                         help="限制本次处理张数（测试/分批用，0=不限）")
     args = parser.parse_args()
@@ -230,6 +249,9 @@ def main():
           f"错误 {summary['errors']} | 耗时 {elapsed / 60:.1f} 分钟 "
           f"({summary['rate_per_sec']} 张/秒)", flush=True)
     db.close()
+
+    if not args.no_ai:
+        _ai_followup(run_id, args.ai_limit)
 
 
 if __name__ == "__main__":

@@ -550,6 +550,22 @@ def build_items(verdicts: list, meta: dict) -> list[tuple]:
     return out
 
 
+def _ai_followup(run_id: int, limit: int) -> None:
+    """复查完给「仍含中文」的英文文档图补 AI 判定：只补没判过的，失败不影响复查结果。"""
+    try:
+        sys.path.insert(0, str(BASE_DIR / "scripts"))
+        import ai_review_ocr
+
+        print("🤖 AI 判定（只补未判定的英文文档图）…", flush=True)
+        res = ai_review_ocr.run_for(run_id, limit=limit, workers=4, only_missing=True)
+        if res.get("skipped"):
+            print(f"   [AI] 跳过：{res['skipped']}", flush=True)
+        elif not res.get("total"):
+            print("   [AI] 没有需要补判定的图", flush=True)
+    except Exception as ex:  # noqa: BLE001
+        print(f"   [AI] 判定失败（不影响复查结果）：{ex}", flush=True)
+
+
 # ───────────────────────────────────────────── 主流程
 def main():
     ap = argparse.ArgumentParser(description="当前全量问题（历史问题是否已解决）")
@@ -559,6 +575,10 @@ def main():
     ap.add_argument("--workers", type=int, default=12, help="OCR 进程数")
     ap.add_argument("--int-delay", type=float, default=0.5, help="站内请求间隔秒")
     ap.add_argument("--timeout", type=float, default=12.0, help="HTTP 超时秒")
+    ap.add_argument("--no-ai", action="store_true",
+                    help="复核完不做 AI 判定（默认给未判定过的英文文档图补 AI 结论）")
+    ap.add_argument("--ai-limit", type=int, default=500,
+                    help="AI 判定最多补多少条（0=不限，默认 500）")
     args = ap.parse_args()
     sel = MODULES if args.module == "all" else (args.module,)
 
@@ -651,6 +671,9 @@ def main():
     db.finish_run(run_id, summary)
     db.close()
     print(f"✅ 复核完成: run#{run_id}", flush=True)
+
+    if not args.no_ai:
+        _ai_followup(run_id, args.ai_limit)
 
 
 if __name__ == "__main__":
