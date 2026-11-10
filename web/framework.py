@@ -242,6 +242,29 @@ def _annotate_kit(items: list[dict], db) -> None:
         it["detail"]["kit"] = m.get(dk, "")
 
 
+def _annotate_ai(items: list[dict], db, mk: str) -> None:
+    """给 items 注入 AI 判定（来自 ai_notes 表，按 module + item_key 关联）。
+
+    表不存在（AI 未跑过）时静默跳过，不影响页面。
+    """
+    try:
+        rows = db._conn.execute(
+            "SELECT item_key, verdict, confidence, reason, suggestion "
+            "FROM ai_notes WHERE module=?", (mk,)).fetchall()
+    except Exception:  # noqa: BLE001 - 表不存在
+        return
+    if not rows:
+        return
+    m = {r[0]: r for r in rows}
+    for it in items:
+        r = m.get(it["item_key"])
+        if r:
+            it["detail"]["ai_verdict"] = r[1]
+            it["detail"]["ai_confidence"] = r[2]
+            it["detail"]["ai_reason"] = r[3]
+            it["detail"]["ai_suggestion"] = r[4]
+
+
 def _apply_filters(items: list[dict], module: dict, args) -> tuple[list[dict], dict]:
     """按模块定义的 filters 筛选 + 排序。返回 (过滤后的 items, 当前筛选状态)。"""
     state: dict = {}
@@ -280,6 +303,12 @@ def _apply_filters(items: list[dict], module: dict, args) -> tuple[list[dict], d
                 items = [it for it in items if not it["detail"].get("kit")]
             else:
                 items = [it for it in items if it["detail"].get("kit") == val]
+        elif f["source"] == "ai":
+            # detail["ai_verdict"]（由 _annotate_ai 注入）；"__none__" = 未判定
+            if val == "__none__":
+                items = [it for it in items if not it["detail"].get("ai_verdict")]
+            else:
+                items = [it for it in items if it["detail"].get("ai_verdict") == val]
         elif f["source"] == "contains":
             # 自由文本子串匹配（如按源文档地址里的任意字段过滤）；留空=全选
             field = f.get("field", f["key"])
@@ -332,10 +361,17 @@ def _type_labels(it: dict, module: dict) -> str:
 
 def _cell_text(it: dict, f: str, render: str) -> str:
     """导出单元格文本（列表 / 链接列表拼接为纯文本）。"""
+    if f == "lang":
+        return _lang_label(it)
     if f in ("url", "doc_url"):
         v = it["detail"].get("url") or it["detail"].get("doc_url") or ""
     else:
         v = it["detail"].get(f, "")
+    if render == "ai":
+        lbl = {"real": "真问题", "false_positive": "误报", "uncertain": "待定"}.get(
+            str(it["detail"].get(f) or ""), "未判定")
+        rsn = it["detail"].get("ai_reason") or ""
+        return f"{lbl}（{rsn[:80]}）" if rsn else lbl
     if render == "link_list":
         if isinstance(v, list):
             return " | ".join(
@@ -347,6 +383,16 @@ def _cell_text(it: dict, f: str, render: str) -> str:
         return " ".join(str(x) for x in v[:30])
     return str(v) if v is not None else ""
 
+
+
+def _lang_label(it) -> str:
+    """导出用：中文 / 英文。优先取 detail.lang，缺失时从 item_key（语言|分类|slug）推断。"""
+    d = it.get("detail") or {}
+    v = (d.get("lang") or "").strip().lower()
+    if not v:
+        k = it.get("item_key") or ""
+        v = k.split("|", 1)[0].strip().lower() if "|" in k else ""
+    return {"cn": "中文", "zh": "中文", "zh-cn": "中文", "en": "英文"}.get(v, v)
 
 def register_module(app, db_path: str, module: dict):
     """注册一个任务模块，自动挂载 /<key>/ 和 /<key>/run/<id> 两个路由。"""
@@ -411,6 +457,7 @@ def register_module(app, db_path: str, module: dict):
             items = db.get_items(run_id) if run else []
             _annotate_kit(items, db)   # 注入 kit（供 Kit 过滤；新 schema 无 harm）
             mk = active_tab["key"] if (tabs and active_tab) else key
+            _annotate_ai(items, db, mk)   # 注入 AI 判定（来自 ai_notes）
             # 页签视图：顶部汇总改用「当前页签（模块）」的数据（run 摘要里带 {模块}_ 前缀时），
             # 与「按模块解决情况」卡片口径一致（解决率分母剔除已忽略）。
             summary = (run or {}).get("summary") or {}
@@ -484,7 +531,9 @@ def register_module(app, db_path: str, module: dict):
 
     @bp.route("/run/<int:run_id>/export")
     def task_export(run_id):
-        """导出当前 run（配合当前筛选）为 Excel(.xlsx)：表头底纹 + 冻结首行 + 自动筛选 + 自适应列宽。"""
+        """导出本次 run 的**全部**条目为 Excel(.xlsx)（不受页面筛选 / 忽略视图 / 隐藏条目影响）。
+        仅在带页签的模块（如复核）里按当前页签取列，因为各页签列定义不同。
+        表头底纹 + 冻结首行 + 自动筛选 + 自适应列宽。"""
         import io
 
         from flask import abort, send_file
@@ -494,12 +543,9 @@ def register_module(app, db_path: str, module: dict):
 
         cols, bm, multi_badge, filters, tabs, active_tab, tab_field = _resolve_view(request.args)
         view_mod = {**module, "multi_badge": multi_badge, "badge_map": bm}
-        # 忽略：导出同样按当前忽略状态与「显示」模式（run 数据不动，恢复即时生效）
+        # 页签模块（如复核）各页签列定义不同：导出按当前页签取列，页签内仍导出全部
         mk = active_tab["key"] if (tabs and active_tab) else key
         has_ign = ignores.supports(mk)
-        show_mode = request.args.get("show", "default") if has_ign else "default"
-        if show_mode not in ("default", "with", "only"):
-            show_mode = "default"
         db = IndexDB(db_path)
         try:
             run = db.get_run(run_id)
@@ -507,6 +553,7 @@ def register_module(app, db_path: str, module: dict):
                 abort(404)
             items = db.get_items(run_id)
             _annotate_kit(items, db)
+            _annotate_ai(items, db, mk)   # 注入 AI 判定（供导出列）
             ig_rules = ignores.active_map(db) if has_ign else {}
             col_defs = cols
         finally:
@@ -514,16 +561,17 @@ def register_module(app, db_path: str, module: dict):
         if tabs and tab_field:
             items = [it for it in items if it["detail"].get(tab_field) == active_tab["key"]]
         if has_ign:
+            # 只标注「已忽略」数量（保留这一列信息），不按显示模式过滤
             _annotate_ignores(items, mk, ig_rules)
-            items = _filter_by_show(items, show_mode)
-        if module.get("item_visible") and not tabs and show_mode == "default":
-            items = [it for it in items if module["item_visible"](it)]
-        _fill_kit_options(filters, db_path, items)
-        if filters:
-            items, _ = _apply_filters(items, {"filters": filters}, request.args)
+        # 导出全部：不套「显示」模式、不套 item_visible、不套页面筛选
         # ── 写 xlsx ──
+        # 模块自己的列里已有「分类」时不再重复追加，只在缺失时补
+        has_cat_col = any(lab == "分类" for _, lab, _ in col_defs)
+        has_lang_col = any(lab == "语言" for _, lab, _ in col_defs)
         header = (["类型"] + (["已忽略"] if has_ign else [])
-                  + [lab for _, lab, _ in col_defs] + ["Kit", "分类"])
+                  + ([] if has_lang_col else ["语言"])
+                  + [lab for _, lab, _ in col_defs]
+                  + ["Kit"] + ([] if has_cat_col else ["分类"]))
         wb = Workbook()
         ws = wb.active
         ws.title = f"{key}_run{run_id}"[:31]
@@ -532,8 +580,10 @@ def register_module(app, db_path: str, module: dict):
             kinfo = (it["detail"] or {}).get("kit") or "未分类"
             ws.append([_type_labels(it, view_mod)]
                       + ([it.get("n_ignored", 0)] if has_ign else [])
+                      + ([] if has_lang_col else [_lang_label(it)])
                       + [_cell_text(it, f, rt) for f, _, rt in col_defs]
-                      + [kinfo, (it["detail"] or {}).get("catalog") or ""])
+                      + [kinfo]
+                      + ([] if has_cat_col else [(it["detail"] or {}).get("catalog") or ""]))
         # 表头：底纹 + 加粗 + 居中 + 冻结 + 自动筛选
         hfill = PatternFill("solid", fgColor="D9E1F2")
         hfont = Font(bold=True)

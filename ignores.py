@@ -16,7 +16,8 @@ from __future__ import annotations
 KINDS: dict[str, list[tuple]] = {
     "linkcheck": [("dead", "断链", "dead_count", "dead_links"),
                   ("vintage", "误链历史版本", "vintage_count", "vintage_links"),
-                  ("anchor_miss", "锚点失效", "anchor_miss_count", "anchor_miss_links")],
+                  ("anchor_miss", "锚点失效", "anchor_miss_count", "anchor_miss_links"),
+                  ("pseudo_dead", "伪200失效", "pseudo_dead_count", "pseudo_dead_links")],
     "encheck": [("hanzi", "含汉字", "hanzi_count", None),
                 ("punct", "含标点", "punct_count", None),
                 ("url_cn", "链接URL含中文", "url_cn_char_count", "url_cn_links"),
@@ -35,6 +36,15 @@ def _load_imgnorm_kinds() -> list[tuple]:
 
 
 KINDS["imgnorm"] = _load_imgnorm_kinds()
+
+
+# ── 忽略命名空间别名：全量链接检查与增量共用同一套规则（同一链接只需忽略一次）──
+_ALIAS = {"linkcheck_full": "linkcheck"}
+
+
+def _nk(module_key: str) -> str:
+    """把模块 key 归一到忽略命名空间。"""
+    return _ALIAS.get(module_key, module_key)
 
 
 def _load_sysmerge_kinds() -> list[tuple]:
@@ -56,7 +66,7 @@ TARGET_LABEL = {"linkcheck": "链接", "encheck": "文档", "ocr": "图片",
                 "imgnorm": "图片", "sysmerge": "文档"}
 
 # 模块在本站的显示名（用于忽略记录/管理展示）
-MODULE_LABEL = {"linkcheck": "链接健康检查", "encheck": "英文文档检查",
+MODULE_LABEL = {"linkcheck_full": "全量链接健康检查", "linkcheck": "链接健康检查", "encheck": "英文文档检查",
                 "ocr": "图片 OCR 检查", "imgnorm": "图片内容规范检查",
                 "sync": "文档同步", "recheck": "当前全量问题",
                 "sysmerge": "系统合并整改"}
@@ -64,7 +74,7 @@ MODULE_LABEL = {"linkcheck": "链接健康检查", "encheck": "英文文档检�
 
 def supports(module_key: str) -> bool:
     """该模块是否支持忽略。"""
-    return bool(KINDS.get(module_key))
+    return bool(KINDS.get(_nk(module_key)))
 
 
 # ── 忽略记录的后端：默认写 index.db 的 ignores 表；模块可注册自己的后端 ──
@@ -89,11 +99,11 @@ def _backend(db, module_key: str):
 
 
 def kinds_of(module_key: str) -> list[tuple]:
-    return KINDS.get(module_key, [])
+    return KINDS.get(_nk(module_key), [])
 
 
 def kind_label(module_key: str, kind: str) -> str:
-    for k, label, _f, _l in KINDS.get(module_key, ()):
+    for k, label, _f, _l in KINDS.get(_nk(module_key), ()):
         if k == kind:
             return label
     return kind
@@ -121,7 +131,7 @@ def is_ignored(rules: dict, module_key: str, target: str, kind: str,
     """
     if not target:
         return False
-    for r in rules.get(module_key, ()):
+    for r in rules.get(_nk(module_key), ()):
         if r["kind"] != kind:
             continue
         if r["target"] not in ("*", target):   # "*" = 整词忽略（该匹配词全忽略）
@@ -149,7 +159,7 @@ def item_problems(module_key: str, detail: dict, item_type: str = "") -> list[di
     """
     d = detail or {}
     out: list[dict] = []
-    if module_key == "linkcheck":
+    if _nk(module_key) == "linkcheck":
         dk = d.get("doc_key", "") or ""
         for kind, label, _cnt, list_f in KINDS["linkcheck"]:
             for l in (d.get(list_f) or []):
@@ -207,7 +217,7 @@ def strip(module_key: str, detail: dict, rules: dict,
     """
     d = dict(detail or {})
     ign = rem = 0
-    if module_key == "linkcheck":
+    if _nk(module_key) == "linkcheck":
         dk = d.get("doc_key", "") or ""
         for kind, _label, cnt_f, list_f in KINDS["linkcheck"]:
             kept = []
@@ -290,6 +300,7 @@ def apply_selection(db, module_key: str, problems: list[dict], selected: set[str
 
     selected 是 encode_problem 的字符串集合。返回 (新增数, 恢复数)。
     """
+    module_key = _nk(module_key)
     rules = active_map(db)
     added = restored = 0
     for p in problems:

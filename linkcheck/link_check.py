@@ -128,11 +128,38 @@ def _browser_ok(url: str, timeout: int = 25) -> bool | None:
     return len(text) >= 5
 
 
+_PSEUDO_DEAD_MARKS = ("您访问的页面不存在", "🐴 404")
+
+
+def _render_verdict(exe: str, url: str, timeout: int = 40) -> str:
+    """渲染判定伪 200：dead=页面实际是 404 / ok=有内容 / unknown=判不了。
+
+    ⚠️ 坑（勿改）：必须串行（并发共用默认 profile 会锁死）；不能加 --user-data-dir
+    （该 chromium 构建指定 profile 必挂）；不能加 --blink-settings=imagesEnabled=false
+    （404 路由页会挂 40s 无输出）。
+    """
+    try:
+        out = subprocess.run(
+            [exe, "--headless", "--no-sandbox", "--disable-gpu",
+             "--disable-dev-shm-usage", "--virtual-time-budget=6000",
+             "--timeout=12000",          # 重页面强制 12s 落盘，避免无限等网络空闲
+             "--dump-dom", url],
+            capture_output=True, timeout=timeout, text=True, errors="ignore")
+        dom = out.stdout or ""
+    except Exception:
+        return "unknown"
+    if len(dom) < 500:
+        return "unknown"
+    return "dead" if any(m in dom for m in _PSEUDO_DEAD_MARKS) else "ok"
+
+
 def _bucket(status: str) -> str:
-    """状态分桶：ok / dead / blocked / server / unreachable。"""
+    """状态分桶：ok / dead / blocked / server / unreachable / pseudo_dead。"""
     s = str(status)
     if s == "SOFT_OK":       # 软 404：HTTP 404 但浏览器可读 → 视为正常
         return "ok"
+    if s == "PSEUDO_DEAD":   # 伪 200：HTTP 200 但渲染是 404（页面已删除/改名）
+        return "pseudo_dead"
     if s.isdigit():
         c = int(s)
         if 200 <= c < 400:
@@ -303,6 +330,12 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=0, help="最多文档数(调试)")
     ap.add_argument("--module-key", default="linkcheck",
                     help="写入 runs.module_key；全量检查传 linkcheck_full")
+    ap.add_argument("--render-check", action="store_true",
+                    help="伪 200 复核：渲染站内 200 链接，识别「HTTP 200 但页面已 404」")
+    ap.add_argument("--render-limit", type=int, default=600,
+                    help="伪 200 复核单次最多渲染数（0=不限）")
+    ap.add_argument("--render-ttl", type=int, default=7,
+                    help="同一 URL 多少天内不重复渲染复核")
     ap.add_argument("--no-browser", action="store_true",
                     help="跳过软 404 浏览器复核（默认对 404 用无头浏览器复验）")
     args = ap.parse_args()
@@ -442,6 +475,65 @@ def main() -> None:
                 print(f"   [复核] 完成：{soft}/{len(suspects)} 个是软 404（页面实际可读，已从断链中剔除）",
                       flush=True)
 
+    # 3.6 伪 200 复核（可选，--render-check）：站内链接 HTTP 200 但渲染出来是 404。
+    #     华为文档站是 SPA，页面被删除/改名后仍返回 200 外壳，只有渲染才能发现。
+    #     结果写 render_cache（避免重复渲染）并把 url_cache 状态改为 PSEUDO_DEAD。
+    if args.render_check:
+        db._conn.execute("CREATE TABLE IF NOT EXISTS render_cache "
+                         "(url TEXT PRIMARY KEY, verdict TEXT, checked_at TEXT)")
+        db._conn.commit()
+        cand: list[str] = []
+        seen_c: set[str] = set()
+        for _dk, _lg, _ct, _content in docs:
+            for _text, _raw, _is_int in _http_links(_content):
+                if not _is_int:
+                    continue
+                _u = _cache_key(_raw)
+                if not _u or _u in seen_c:
+                    continue
+                seen_c.add(_u)
+                _s = status.get(_u) or db.get_url_cache(_u)
+                if _s and _bucket(_s) == "ok":
+                    cand.append(_u)
+        cutoff = time.strftime("%Y-%m-%d %H:%M:%S",
+                               time.localtime(time.time() - args.render_ttl * 86400))
+        fresh = {r0[0] for r0 in db._conn.execute(
+            "SELECT url FROM render_cache WHERE checked_at >= ?", (cutoff,))}
+        todo = [u for u in cand if u not in fresh]
+        rows_total = len(todo)
+        if args.render_limit and len(todo) > args.render_limit:
+            todo = todo[:args.render_limit]
+        exe = _chrome_bin()
+        if not exe:
+            print("   [伪200] 未找到可用浏览器，跳过（可用 CHROME_BIN 指定）", flush=True)
+        elif todo:
+            if rows_total > len(todo):
+                print(f"   [伪200] 候选 {rows_total} 个，本次只跑 {len(todo)} 个"
+                      f"（--render-limit 可调，其余下次继续）", flush=True)
+            print(f"   [伪200] 渲染复核 {len(todo)} 个站内 200 链接（串行，约 5s/个）…", flush=True)
+            stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            pd_dead = pd_unknown = 0
+            for i, u in enumerate(todo, 1):
+                v = _render_verdict(exe, u)
+                db._conn.execute(
+                    "INSERT OR REPLACE INTO render_cache(url,verdict,checked_at) VALUES (?,?,?)",
+                    (u, v, stamp))
+                if v == "dead":
+                    status[u] = "PSEUDO_DEAD"
+                    db.set_url_cache(u, "PSEUDO_DEAD")
+                    pd_dead += 1
+                elif v == "unknown":
+                    pd_unknown += 1
+                if i % 20 == 0 or i == len(todo):
+                    db._conn.commit()
+                    db.commit()
+                    print(f"      伪200 进度: {i}/{len(todo)}（伪200 {pd_dead} / 判不了 {pd_unknown}）",
+                          flush=True)
+            db._conn.commit()
+            db.commit()
+            print(f"   [伪200] 完成：{pd_dead}/{len(todo)} 个是伪 200（页面已失效），"
+                  f"{pd_unknown} 个判不了", flush=True)
+
     def get_status(u: str) -> str:
         if u in status:
             return status[u]
@@ -456,6 +548,7 @@ def main() -> None:
         unreach: list[dict] = []
         vintage: list[dict] = []
         anchor_miss: list[dict] = []
+        pseudo: list[dict] = []
         seen: set[str] = set()
         for text, raw, is_int in _http_links(content):
             u = _cache_key(raw)
@@ -484,7 +577,9 @@ def main() -> None:
             b = _bucket(s)
             rec = {"text": text, "url": raw, "status": s,
                    "kind": "int" if is_int else "ext"}
-            if b == "dead":
+            if b == "pseudo_dead":
+                pseudo.append(rec)
+            elif b == "dead":
                 dead.append(rec)
             elif b == "blocked":
                 blocked.append(rec)
@@ -492,7 +587,7 @@ def main() -> None:
                 server.append(rec)
             elif b == "unreachable":
                 unreach.append(rec)
-        if not (dead or blocked or server or unreach or vintage or anchor_miss):
+        if not (dead or blocked or server or unreach or vintage or anchor_miss or pseudo):
             continue
         d = db.get_doc(doc_key)
         problems.append({
@@ -504,6 +599,7 @@ def main() -> None:
             "unreachable_links": unreach, "unreachable_count": len(unreach),
             "vintage_links": vintage, "vintage_count": len(vintage),
             "anchor_miss_links": anchor_miss, "anchor_miss_count": len(anchor_miss),
+            "pseudo_dead_links": pseudo, "pseudo_dead_count": len(pseudo),
         })
 
     # 5. 汇总 + 写库
@@ -516,13 +612,14 @@ def main() -> None:
         "unreachable": sum(p["unreachable_count"] for p in problems),
         "vintage": sum(p["vintage_count"] for p in problems),
         "anchor_miss": sum(p["anchor_miss_count"] for p in problems),
+        "pseudo_dead": sum(p["pseudo_dead_count"] for p in problems),
         "urls_checked": len(status),
         "soft_ok": sum(1 for s in status.values() if s == "SOFT_OK"),
     }
     print(f"   统计: {summary['total']} 篇问题 | 断链 {summary['dead']} | "
           f"被拒 {summary['blocked']} | 服务端异常 {summary['server']} | "
           f"不可达 {summary['unreachable']} | 历史版本 {summary['vintage']} | "
-          f"锚点失效 {summary['anchor_miss']}", flush=True)
+          f"锚点失效 {summary['anchor_miss']} | 伪200 {summary['pseudo_dead']}", flush=True)
 
     if args.dry_run:
         db.close()

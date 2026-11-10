@@ -95,7 +95,7 @@
     {% endfor %}
     <button type="submit" class="filter-apply">过滤</button>
     {% if run %}
-    <a class="btn-export" href="/{{ module.key }}/run/{{ run.id }}/export?{{ request.query_string.decode()|safe }}">⬇ 导出当前所选</a>
+    <a class="btn-export" href="/{{ module.key }}/run/{{ run.id }}/export?{{ request.query_string.decode()|safe }}">⬇ 导出全部</a>
     {% endif %}
     <span class="filter-count">{{ total }} 条结果</span>
     <noscript><button type="submit">应用</button></noscript>
@@ -183,6 +183,13 @@
                         <img class="thumb" src="/media/{{ it.detail[f].replace('data/', '', 1) }}"
                              alt="图片" loading="lazy">
                     </a>
+                {% elif render == 'ai' %}
+                    {% set av = it.detail.get('ai_verdict') %}
+                    {% set ar = it.detail.get('ai_reason') or '' %}
+                    {% if av == 'real' %}<span class="badge" style="background:#fdecec;color:#d13438" title="{{ ar }}">真问题</span>
+                    {% elif av == 'false_positive' %}<span class="badge" style="background:#eef2fe;color:#2f54d0" title="{{ ar }}">误报</span>
+                    {% elif av == 'uncertain' %}<span class="badge" style="background:#f3f4f8;color:#6b7183" title="{{ ar }}">待定</span>
+                    {% else %}<span class="badge" style="background:#f6f7fb;color:#98a2b3">未判定</span>{% endif %}
                 {% elif f == 'ocr_text' %}
                     <span class="ocr-text">{{ it.detail.get(f, '')|highlight_cjk|safe }}</span>
                 {% else %}
