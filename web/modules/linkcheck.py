@@ -23,7 +23,7 @@ import ignores  # noqa: E402
 from catalogs import CATALOG_LABELS, CATALOG_OPTIONS  # noqa: E402
 
 # 界面上"可见问题"的字段（决定列表是否收录该文档）
-VISIBLE_FIELDS = ("dead_count", "vintage_count", "anchor_miss_count", "pseudo_dead_count")
+VISIBLE_FIELDS = ("dead_count", "vintage_count", "anchor_miss_count")
 
 
 def _item_visible(it: dict) -> bool:
@@ -37,7 +37,7 @@ def _linkcheck_context(db) -> dict:
     与 encheck/OCR 口径一致——日常 run 是增量的，若只取最近一次 run，卡片数字会变成
     “当天增量”而非“当前全量”。「检查文档」取文档总数（正常文档不写 item，无法从 items 统计）。
     """
-    stats = {"checked": 0, "dead": 0, "vintage": 0, "anchor_miss": 0, "pseudo_dead": 0}
+    stats = {"checked": 0, "dead": 0, "vintage": 0, "anchor_miss": 0}
     # 顶部 = 最新一日的检查（最近一次成功 run，增量口径；用户 2026-09 定）
     rows = db._conn.execute(
         "SELECT i.item_key, i.detail_json FROM items i "
@@ -63,7 +63,6 @@ def _linkcheck_context(db) -> dict:
         stats["dead"] += d2.get("dead_count", 0)
         stats["vintage"] += d2.get("vintage_count", 0)
         stats["anchor_miss"] += d2.get("anchor_miss_count", 0)
-        stats["pseudo_dead"] += d2.get("pseudo_dead_count", 0)
     _ra = db._conn.execute(
         "SELECT started_at FROM runs WHERE module_key='linkcheck' AND status='success' "
         "ORDER BY id DESC LIMIT 1").fetchone()
@@ -78,16 +77,13 @@ LINKCHECK_MODULE = {
     "description": "链接健康检查：断链 / 误链历史版本 / 锚点失效（真实 HTTP + 缓存 TTL）",
     "runs_title": "每日增量内容链接检查记录",
     "summary_fields": [("checked", "检查文档"), ("dead", "断链"),
-                       ("pseudo_dead", "伪200失效"),
                        ("vintage", "误链历史版本"), ("anchor_miss", "锚点失效")],
     "detail_summary_fields": [("checked", "检查文档"), ("dead", "断链"),
-                              ("pseudo_dead", "伪200失效"),
                               ("vintage", "误链历史版本"),
                               ("anchor_miss", "锚点失效")],
     "item_columns": [
         ("catalog", "分类"),
         ("dead_links", "断链(404/410)", "link_list"),
-        ("pseudo_dead_links", "伪200(页面已失效)", "link_list"),
         ("vintage_links", "历史版本链接", "link_list"),
         ("anchor_miss_links", "锚点失效链接", "link_list"),
         ("url", "源文档"),
@@ -97,9 +93,9 @@ LINKCHECK_MODULE = {
         {"key": "lang", "label": "语言", "source": "detail",
          "options": [("all", "全部"), ("cn", "中文文档"), ("en", "英文文档")]},
         {"key": "type", "label": "问题", "source": "count",
-         "fields": {"dead": "dead_count", "pseudo_dead": "pseudo_dead_count",
+         "fields": {"dead": "dead_count",
                     "vintage": "vintage_count", "anchor_miss": "anchor_miss_count"},
-         "options": [("all", "全部"), ("dead", "断链"), ("pseudo_dead", "伪200失效"),
+         "options": [("all", "全部"), ("dead", "断链"),
                      ("vintage", "误链历史版本"), ("anchor_miss", "锚点失效")]},
         {"key": "catalog", "label": "分类", "source": "detail",
          "options": list(CATALOG_OPTIONS)},
@@ -109,7 +105,6 @@ LINKCHECK_MODULE = {
     ],
     "multi_badge": [
         ("dead_count", "badge-failed", "断链"),
-        ("pseudo_dead_count", "badge-failed", "伪200失效"),
         ("vintage_count", "badge-deleted", "误链历史版本"),
         ("anchor_miss_count", "badge-info", "锚点失效"),
     ],

@@ -17,7 +17,7 @@ KINDS: dict[str, list[tuple]] = {
     "linkcheck": [("dead", "断链", "dead_count", "dead_links"),
                   ("vintage", "误链历史版本", "vintage_count", "vintage_links"),
                   ("anchor_miss", "锚点失效", "anchor_miss_count", "anchor_miss_links"),
-                  ("pseudo_dead", "伪200失效", "pseudo_dead_count", "pseudo_dead_links")],
+                  ],
     "encheck": [("hanzi", "含汉字", "hanzi_count", None),
                 ("punct", "含标点", "punct_count", None),
                 ("url_cn", "链接URL含中文", "url_cn_char_count", "url_cn_links"),
