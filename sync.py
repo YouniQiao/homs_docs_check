@@ -14,6 +14,7 @@ import concurrent.futures
 import hashlib
 import json
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -367,6 +368,32 @@ def sync(config: dict, db: IndexDB, catalogs: list[str], langs: list[str],
     return added, modified, deleted
 
 
+def _prune_orphan_images(min_age_days: int = 30) -> None:
+    """同步后清理「长时间无人引用」的图片。
+
+    文档改版/下线后旧图会留在 images/ 里，sync 只下载不删除，长期会膨胀
+    （实测曾累积到 53.8 GB）。这里调用 scripts/prune_orphan_images.py，
+    只删 mtime 早于 min_age_days 且没有任何 md 引用的文件。
+    失败只告警，不影响同步结果。
+    """
+    script = BASE_DIR / "scripts" / "prune_orphan_images.py"
+    if not script.exists():
+        return
+    print(f"🧹 清理孤儿图片（mtime > {min_age_days} 天且无引用）…", flush=True)
+    try:
+        r = subprocess.run(
+            [sys.executable, str(script), "--execute",
+             "--min-age", str(min_age_days), "--quiet"],
+            capture_output=True, text=True, timeout=1800, cwd=str(BASE_DIR))
+        out = (r.stdout or "").strip().splitlines()
+        summary = out[-1] if out else "完成"
+        print(f"   {summary}", flush=True)
+        if r.returncode != 0:
+            print(f"   ⚠ 清理退出码 {r.returncode}: {(r.stderr or '')[:200]}", flush=True)
+    except Exception as e:  # noqa: BLE001 - 清理失败不应影响同步
+        print(f"   ⚠ 清理失败（不影响同步）: {e}", flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description="HarmonyOS 文档同步")
     parser.add_argument("--full", action="store_true", help="首次全量（建立基线）")
@@ -377,6 +404,10 @@ def main():
                         help="单次删除量很大时也照删本地文件（默认跳过）")
     parser.add_argument("--workers", type=int, default=None,
                         help="并发线程数（默认取 config.yaml 的 workers）")
+    parser.add_argument("--no-prune", action="store_true",
+                        help="同步后不清理孤儿图片（默认会清 >30 天无引用的）")
+    parser.add_argument("--prune-age", type=int, default=30, metavar="DAYS",
+                        help="孤儿图片清理门槛天数（默认 30）")
     args = parser.parse_args()
 
     config = load_config()
@@ -392,6 +423,9 @@ def main():
              purge_deleted=args.purge_deleted)
     finally:
         db.close()
+
+    if not (args.dry_run or args.no_prune):
+        _prune_orphan_images(args.prune_age)
 
 
 if __name__ == "__main__":
